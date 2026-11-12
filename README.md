@@ -27,3 +27,9 @@ Run python -m http.server 8000 from the repository folder and open http://localh
 The site displays any saved depth chart immediately, checks the current roster straight from ESPN in the browser, and attempts a live depth-chart request. Most browser depth-chart requests are blocked by CORS, so GitHub Actions keeps a ranked snapshot. Visible tabs are rechecked every 2 minutes and snapshots every 5 minutes. The JSON is read from raw.githubusercontent.com to bypass GitHub Pages' deployment cache (GITHUB_TOKEN commits do not trigger branch-source Pages redeployment). The roster display explicitly labels unverified depth order instead of guessing.
 
 Pixel helmets draw genuine ESPN team marks as tiny nearest-neighbor bitmaps, and jerseys are crisp pixel SVGs with team colors and player numbers.
+
+## Second depth chart source
+
+When the ESPN ranked depth chart cannot be fetched, the site also checks Sleeper's public players feed for published depth_chart_order values. It matches those records to the current ESPN roster by ESPN player ID or normalized name, then sorts only players with confirmed order. Positions without rankings stay unranked instead of guessing. The site labels this clearly as Sleeper depth, not ESPN depth.
+
+The Sleeper API recommends fetching its large player index only once a day. The site requests only active players and stores a slimmed index locally for up to 23 hours; it does not re-download the list every time a team is selected. API docs: https://docs.sleeper.com/ .
