@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#091320">
+<meta name="description" content="NFL depth charts, 8-bit style. Pick from all 32 teams.">
+<title>8-Bit Football</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+<link href="./style.css" rel="stylesheet">
+<script src="./app.js" defer></script>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div class="logo-icon" aria-hidden="true">◆</div>
+    <div class="brand"><strong>8-BIT <em>FOOTBALL</em></strong><small>THE NFL, PIXEL BY PIXEL.</small></div>
+    <div class="season">NFL<br><b>26</b></div>
+  </header>
+  <main>
+    <section class="stadium" aria-label="NFL team selector">
+      <div class="scoreboard"><span><i class="pixel-dot"></i> TEAM SELECT</span><span>32 TEAMS / 1 LEAGUE</span></div>
+      <div class="stadium-crowd" aria-hidden="true"></div>
+      <div class="team-chooser">
+        <button type="button" id="prevTeam" class="step" aria-label="Previous team">◀</button>
+        <button type="button" id="selectTeam" class="selected-team" aria-label="Choose a different NFL team" aria-haspopup="dialog">
+          <span id="teamHelmet" class="helmet" aria-hidden="true"></span>
+          <span id="teamCity" class="city">CHICAGO</span>
+          <span id="teamName" class="nickname">BEARS</span>
+          <span id="teamDivision" class="division">NFC NORTH</span>
+          <span class="change-team">▼ CHANGE TEAM</span>
+        </button>
+        <button type="button" id="nextTeam" class="step" aria-label="Next team">▶</button>
+      </div>
+      <div class="field" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+    </section>
+    <section class="roster" aria-label="NFL depth chart">
+      <div class="roster-heading">
+        <div><div class="eyebrow">THE LINEUP</div><h1>DEPTH CHART <span>✦</span></h1></div>
+        <div id="count" class="count">--<small>PLAYERS</small></div>
+      </div>
+      <nav class="tabs" aria-label="Roster category">
+        <button type="button" data-unit="offense" class="tab active" aria-pressed="true">▦ OFFENSE</button>
+        <button type="button" data-unit="defense" class="tab" aria-pressed="false">⬟ DEFENSE</button>
+        <button type="button" data-unit="special" class="tab" aria-pressed="false">★ SPECIAL</button>
+      </nav>
+      <div class="data-bar"><span id="dataStatus" role="status">LOADING LINEUP...</span><button type="button" id="reload" title="Refresh" aria-label="Refresh roster">↻</button></div>
+      <div id="positions" class="positions" aria-live="polite"><div class="message"><span class="football">◆</span> LOADING ROSTER...</div></div>
+    </section>
+  </main>
+  <footer><span>8-BIT FOOTBALL</span><span>BUILT FOR SUNDAYS ♥</span></footer>
+</div>
+<div id="picker" class="picker" hidden>
+  <button type="button" id="shade" class="shade" aria-label="Close team selector"></button>
+  <section class="picker-panel" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
+    <div class="picker-top"><div><div class="eyebrow">PICK YOUR SIDE</div><h2 id="pickerTitle">CHOOSE A TEAM</h2></div><button type="button" id="closePicker" class="close" aria-label="Close">✕</button></div>
+    <label for="teamSearch">SEARCH TEAMS</label>
+    <input id="teamSearch" type="search" placeholder="TEAM OR CITY..." autocomplete="off" spellcheck="false">
+    <div id="teamGrid" class="team-grid"></div>
+  </section>
+</div>
+</body>
+</html>

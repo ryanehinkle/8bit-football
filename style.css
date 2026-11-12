@@ -1,0 +1,92 @@
+:root{--bg:#091320;--panel:#12263b;--bright:#f6f1e6;--dim:#a2b5c4;--gold:#ffd15e;--team:#0b162a;--trim:#c83803}
+*{box-sizing:border-box}
+html{background:var(--bg);scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--bright);font-family:"Pixelify Sans",monospace;font-size:19px;line-height:1.15;-webkit-font-smoothing:none}
+button,input{font:inherit}button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+button:active{transform:translateY(2px)}
+.app{max-width:740px;margin:auto;min-height:100vh;overflow:clip;background:var(--bg)}
+.header{display:flex;align-items:center;gap:12px;padding:calc(18px + env(safe-area-inset-top,0px)) 18px 18px;background:#0d1d2e;border-bottom:4px solid #02060c}
+.logo-icon{width:40px;height:40px;flex:0 0 40px;display:grid;place-items:center;background:var(--gold);border:3px solid #000;box-shadow:4px 4px 0 #000;color:#19334b;font-size:27px}
+.brand{flex:1;min-width:0}.brand strong{display:block;font-family:"Press Start 2P",monospace;font-size:clamp(10px,3vw,16px);line-height:1.5;letter-spacing:-.8px;white-space:nowrap;text-shadow:2px 2px #000}
+.brand em{color:var(--gold);font-style:normal}
+.brand small{display:block;margin-top:5px;font-size:12px;letter-spacing:1.3px;color:var(--dim)}
+.season{background:var(--gold);color:#071422;border:2px solid #05090e;box-shadow:3px 3px #000;font:8px/1.55 "Press Start 2P",monospace;padding:6px 8px;text-align:center}
+.season b{font-size:12px}
+.stadium{position:relative;isolation:isolate;overflow:hidden;border-bottom:5px solid #01070e;background:linear-gradient(#18334e,#1d4057 65%,#0c2433)}
+.stadium:before{content:"";z-index:-2;position:absolute;inset:20px 0 38px;background-image:radial-gradient(#ffe6a0 2px,transparent 2px),radial-gradient(#c4d5bd 1px,transparent 1px);background-size:27px 17px,39px 23px;background-position:2px 4px,12px 10px;opacity:.25}
+.scoreboard{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:15px 13px 0;background:#060b13;border:3px solid #eee9dc;outline:3px solid #02060b;padding:10px 8px;color:white;box-shadow:0 5px #02060b;font:clamp(7px,1.85vw,9px)/1.6 "Press Start 2P",monospace}
+.scoreboard span:last-child{color:#b7c9d5}.pixel-dot{display:inline-block;width:8px;height:8px;margin-right:6px;background:#6feb95;box-shadow:2px 2px #155a33;animation:blink 2s steps(1,end) infinite}
+.stadium-crowd{position:absolute;z-index:-1;left:0;right:0;bottom:37px;height:55px;background-image:linear-gradient(90deg,#f5d08c 0 7px,transparent 7px 13px,#c1d6e4 13px 19px,transparent 19px 29px,#a85d60 29px 36px,transparent 36px 45px),linear-gradient(90deg,#cc8b5e 0 5px,#24556d 5px 19px,#e5dfbd 19px 25px,#172a39 25px 35px);background-size:45px 14px,35px 14px;background-position:0 0,5px 18px;opacity:.7}
+.team-chooser{display:grid;grid-template-columns:42px minmax(0,1fr) 42px;align-items:center;gap:4px;min-height:255px;padding:24px 13px 27px}
+.step{width:41px;height:45px;background:#f5eee2;color:#081523;border:3px solid #060b10;box-shadow:3px 4px #000;font:11px "Press Start 2P",monospace}
+.selected-team{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0 auto;background:transparent;border:0;color:var(--bright);padding:0;text-align:center}
+.helmet{display:block;width:113px;height:97px;filter:drop-shadow(5px 5px 0 #020911)}
+.helmet svg,.jersey svg{width:100%;height:100%;image-rendering:pixelated;display:block}
+.city{margin-top:6px;font-size:17px;font-weight:700;letter-spacing:4px;text-shadow:2px 2px #060f18}
+.nickname{font:clamp(18px,6.5vw,32px)/1.35 "Press Start 2P",monospace;text-shadow:4px 4px #03080e;overflow-wrap:anywhere;max-width:100%}
+.division{padding:5px 12px;margin-top:8px;background:var(--gold);color:#091421;box-shadow:3px 3px #02080e;letter-spacing:1px;font-weight:700;font-size:13px}
+.change-team{margin-top:16px;font:8px/1.5 "Press Start 2P",monospace;color:#fff9d9;text-shadow:2px 2px #000}
+.field{height:39px;border-top:5px solid #07151a;background:repeating-linear-gradient(90deg,#24714b 0 18px,#317e56 18px 36px);display:flex;justify-content:space-between;padding:0 17px;position:relative}
+.field:before,.field:after{content:"";position:absolute;height:3px;background:#d4e7ca;left:0;right:0;top:10px;opacity:.75}.field:after{top:28px}
+.field span{width:2px;background:#cfe7c6;opacity:.75}
+.roster{padding:28px 14px 44px}
+.roster-heading{display:flex;justify-content:space-between;align-items:end;gap:8px;margin:0 3px 19px}
+.eyebrow{color:var(--gold);font:9px/1.7 "Press Start 2P",monospace}
+h1,h2{font-family:"Press Start 2P",monospace;line-height:1.45;text-shadow:3px 3px #000;margin:7px 0 0}
+h1{font-size:clamp(14px,4.8vw,24px)}h1 span{color:var(--gold);font-size:12px}
+.count{color:var(--gold);text-align:center;font:20px/1.2 "Press Start 2P",monospace;min-width:55px}
+.count small{display:block;color:#9fb4c2;font-size:7px;margin-top:6px}
+.tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;position:sticky;top:0;z-index:5;padding:4px 0 11px;background:var(--bg)}
+.tab{height:52px;min-width:0;padding:6px 1px;color:#bfd2df;background:#192e43;border:3px solid #405c74;box-shadow:0 4px #030911;font:clamp(7px,2.05vw,10px)/1.5 "Press Start 2P",monospace;white-space:nowrap}
+.tab.active{background:var(--gold);border-color:#fff0ba;color:#071422;box-shadow:0 4px #8b682d}
+.data-bar{margin:5px 2px 9px;display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:35px;color:#93aabd;font-size:13px;letter-spacing:.5px}
+.data-bar button{width:33px;height:29px;background:transparent;border:2px solid #50677f;color:white;font-size:23px;line-height:18px}
+.position{margin:18px 0 23px}
+.position summary{list-style:none;display:flex;align-items:center;gap:10px;padding:0 1px 10px;min-height:33px;cursor:pointer;user-select:none}
+.position summary::-webkit-details-marker{display:none}
+.pos-badge{display:grid;place-items:center;flex:0 0 27px;height:27px;background:var(--gold);border:2px solid #000;box-shadow:3px 3px #000;color:#071420;font:9px "Press Start 2P",monospace}
+.pos-label{flex:1;min-width:0;font:clamp(9px,2.7vw,12px)/1.4 "Press Start 2P",monospace}
+.pos-qty{color:#91aab9;font-size:13px}.caret{color:var(--gold);font-size:12px}
+.position:not([open]) .caret{transform:rotate(-90deg)}
+.player-list{border:3px solid #364e66;box-shadow:4px 4px #02060d;background:var(--panel)}
+.player{border-bottom:2px solid #2b4258}.player:last-child{border-bottom:0}
+.player-button{display:flex;align-items:center;gap:10px;min-height:75px;width:100%;background:transparent;border:0;padding:8px 10px;color:var(--bright);text-align:left}
+.player-button:hover,.player-button[aria-expanded="true"]{background:#203c56}
+.player-rank{flex:0 0 26px;width:26px;text-align:center;color:#a9c1d1;font:9px "Press Start 2P",monospace}
+.player:first-child .player-rank{color:var(--gold)}
+.jersey{flex:0 0 48px;width:48px;height:52px;filter:drop-shadow(2px 3px #02060b)}
+.player-detail{min-width:0;flex:1;display:block}
+.player-name{display:block;font-size:clamp(19px,5.6vw,25px);font-weight:700;line-height:1.02;overflow-wrap:anywhere}
+.player-meta{display:block;margin-top:6px;color:#acc5d6;font-size:13px;letter-spacing:1px}
+.player-arrow{color:var(--gold);flex-shrink:0;font-size:17px}
+.player-button[aria-expanded="true"] .player-arrow{transform:rotate(90deg)}
+.extra{background:#091b2d;border-top:2px solid #2d4960;padding:12px 12px 13px 95px;display:flex;flex-wrap:wrap;gap:9px 17px;color:#cbd9df;font-size:14px}
+.extra b{color:var(--gold)}.extra a{color:var(--gold)}
+.message{margin-top:15px;padding:45px 15px;border:3px dashed #496079;color:#cad7dc;text-align:center;font:10px/2.2 "Press Start 2P",monospace}
+.football{display:block;font-size:30px;color:var(--gold);animation:bounce .7s steps(2,end) infinite}
+.retry{display:block;margin:15px auto 0;padding:11px;background:var(--gold);border:3px solid #000;box-shadow:3px 3px #000;color:#0a1320;font:9px "Press Start 2P",monospace}
+footer{display:flex;justify-content:space-between;gap:8px;padding:20px 16px calc(20px + env(safe-area-inset-bottom,0px));border-top:4px solid #1d4041;background:#07111e;color:#7d98a7;font:8px/1.6 "Press Start 2P",monospace}
+footer span:last-child{color:#d2b35e;text-align:right}
+.picker[hidden]{display:none}.picker{position:fixed;inset:0;z-index:99}
+.shade{position:absolute;inset:0;border:0;background:#000c;width:100%;height:100%}
+.picker-panel{position:absolute;left:0;right:0;bottom:0;top:5vh;max-width:740px;margin:auto;display:flex;flex-direction:column;overflow:hidden;border:4px solid #f7eede;border-bottom:0;background:#102437;padding:21px 15px 0;box-shadow:0 -8px #000}
+.picker-top{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:18px}
+.picker-top h2{font-size:clamp(13px,4vw,20px)}
+.close{flex:0 0 43px;height:43px;background:var(--gold);border:3px solid #02070d;box-shadow:3px 3px #000;font:13px "Press Start 2P",monospace;color:#091320}
+.picker-panel label{font:9px "Press Start 2P",monospace;color:#afc4d2;margin-bottom:8px}
+#teamSearch{width:100%;height:48px;background:#091928;border:3px solid #49677f;border-radius:0;padding:10px 12px;color:white;font-size:19px}
+#teamSearch::placeholder{color:#7794a8}
+.team-grid{overflow-y:auto;flex:1;overscroll-behavior:contain;padding:13px 3px calc(25px + env(safe-area-inset-bottom,0px))}
+.division-heading{background:#203c57;color:var(--gold);padding:8px;font:10px/1.4 "Press Start 2P",monospace;margin:17px 0 10px}
+.division-heading:first-child{margin-top:0}
+.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.choice{display:flex;align-items:center;gap:8px;min-width:0;min-height:62px;border:2px solid #476278;box-shadow:3px 3px #07121b;background:#162d43;padding:6px;color:white;text-align:left}
+.choice.chosen{border-color:var(--gold);background:#28485c}
+.choice-flag{display:grid;place-items:center;flex:0 0 39px;height:39px;background:var(--c);border:2px solid #000;color:var(--ct);font:9px "Press Start 2P",monospace}
+.choice-info{display:block;min-width:0}.choice-city{display:block;font-size:13px;color:#b8cbd6}.choice-name{display:block;font-size:18px;font-weight:700;overflow-wrap:anywhere;line-height:1}
+body.modal-open{overflow:hidden}
+@media(min-width:600px){.roster{padding-left:27px;padding-right:27px}.header{padding-left:26px;padding-right:26px}.team-chooser{min-height:295px;grid-template-columns:54px 1fr 54px}.step{width:52px;height:53px}.helmet{width:130px;height:110px}}
+@media(max-width:370px){.header{gap:8px;padding-left:12px;padding-right:12px}.logo-icon{width:35px;height:35px;flex-basis:35px}.brand small{font-size:10px}.season{padding:5px}.team-chooser{grid-template-columns:35px 1fr 35px;padding-left:8px;padding-right:8px}.step{width:34px;font-size:9px}.roster{padding-left:9px;padding-right:9px}.player-button{gap:7px;padding:8px 7px}.jersey{width:43px;flex-basis:43px}.tab{font-size:7px}}
+@keyframes blink{50%{opacity:.25}}@keyframes bounce{50%{transform:translateY(-8px)}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;scroll-behavior:auto!important}}
