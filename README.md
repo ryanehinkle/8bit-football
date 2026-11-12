@@ -12,7 +12,7 @@ This repository started out private. GitHub Free requires a public repository to
 
 ## Data
 
-GitHub Actions refreshes ESPN depth charts and roster numbers daily, saves the results in data/depthcharts.json, and preserves previously fetched teams if a request fails. The first update runs when the workflow is added, and it is also manually runnable from Actions.
+GitHub Actions attempts to refresh ESPN depth charts and roster numbers every 5 minutes (subject to GitHub Actions availability and scheduling delays), saves the results in data/depthcharts.json, and preserves previously fetched teams if a request fails. It also runs when app.js or the workflow changes, and you can run it manually from Actions. If Actions reports startup_failure with zero jobs, that's a GitHub workflow startup issue rather than a Python script failure, and the site still tries the live browser roster endpoint.
 
 ESPN's depth chart endpoints do not reliably support browser CORS, so the scheduled snapshot provides ranked depth charts in this static Pages site. If there is no snapshot for a team, the browser fetches ESPN's roster endpoint instead and clearly marks it as an unverified roster order. No player data is fabricated.
 
@@ -21,3 +21,9 @@ ESPN's endpoints are unofficial and may change. This fan project is not affiliat
 ## Preview
 
 Run python -m http.server 8000 from the repository folder and open http://localhost:8000.
+
+## Mobile freshness
+
+The site displays any saved depth chart immediately, checks the current roster straight from ESPN in the browser, and attempts a live depth-chart request. Most browser depth-chart requests are blocked by CORS, so GitHub Actions keeps a ranked snapshot. Visible tabs are rechecked every 2 minutes and snapshots every 5 minutes. The JSON is read from raw.githubusercontent.com to bypass GitHub Pages' deployment cache (GITHUB_TOKEN commits do not trigger branch-source Pages redeployment). The roster display explicitly labels unverified depth order instead of guessing.
+
+Pixel helmets draw genuine ESPN team marks as tiny nearest-neighbor bitmaps, and jerseys are crisp pixel SVGs with team colors and player numbers.

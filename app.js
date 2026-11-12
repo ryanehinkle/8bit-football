@@ -32,23 +32,58 @@ function foreground(hex){
   return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722>.38?"#071422":"#ffffff";
 }
 function selected(){return BY_SLUG[activeTeam];}
+
 function helmet(t){
-  const a=escapeHTML(t.primary),b=escapeHTML(t.secondary),c=escapeHTML(t.slug.toUpperCase());
-  return '<svg viewBox="0 0 106 96" shape-rendering="crispEdges" aria-hidden="true"><path d="M26 10H76V16H88V24H94V59H86V69H61V75H29V68H17V56H11V33H17V21H26Z" fill="#03070c"/>'+
-  '<path d="M29 15H73V21H83V29H89V55H80V63H59V70H31V63H22V55H16V33H22V24H29Z" fill="'+a+'"/>'+
-  '<path d="M35 16H49V23H34V29H23V40H18V31H25V22H35Z M47 16H56V35H47Z" fill="'+b+'"/>'+
-  '<path d="M60 46H89V52H96V58H88V64H78V72H62V67H76V59H85V55H60Z" fill="#04080d"/>'+
-  '<path d="M60 48H86V52H92V55H85V61H75V67H63V63H72V57H80V54H60Z" fill="#f6f3e6"/>'+
-  '<path d="M58 45H64V54H58Z" fill="#d6e0dc"/><rect x="28" y="39" width="43" height="20" fill="#02050a" opacity=".55"/>'+
-  '<text x="49" y="53" text-anchor="middle" fill="#ffffff" font-family="monospace" font-size="14" font-weight="900">'+c+'</text></svg>';
+  const main=escapeHTML(t.primary),trim=escapeHTML(t.secondary);
+  const short=escapeHTML(t.slug.toUpperCase());
+  return '<span class="helmet-art"><svg viewBox="0 0 108 92" shape-rendering="crispEdges" aria-hidden="true">' +
+    '<path d="M29 4H72V9H83V14H92V24H98V53H93V61H84V67H59V73H36V68H25V63H16V52H11V29H16V18H22V10H29Z" fill="#03070c"/>' +
+    '<path d="M29 10H72V15H82V20H88V28H94V51H88V56H80V62H60V68H37V63H26V57H21V50H16V29H21V20H29Z" fill="'+main+'"/>' +
+    '<path d="M30 10H72V15H82V20H48V15H30Z M21 29H27V51H21Z" fill="'+trim+'"/>' +
+    '<path d="M28 20H36V25H28Z M21 27H27V39H21Z M27 16H33V20H27Z" fill="#ffffff" opacity=".45"/>' +
+    '<path d="M61 50H95V55H102V61H96V67H82V75H71V81H58V75H69V69H77V63H86V59H61Z" fill="#020408"/>' +
+    '<path d="M62 51H93V56H99V60H92V63H80V69H72V75H62V71H69V65H76V59H84V56H62Z" fill="#ecebe7"/>' +
+    '<path d="M65 54H82V58H65Z M79 64H84V69H79Z" fill="#a8b3bb"/>' +
+    '<rect x="56" y="44" width="8" height="13" fill="#05090c"/><rect x="58" y="46" width="6" height="7" fill="'+trim+'"/>' +
+    '<rect x="35" y="64" width="20" height="4" fill="#05090c"/>' +
+    '</svg><span class="helmet-mark-fallback">'+short+'</span><canvas class="helmet-logo" width="20" height="20" aria-hidden="true"></canvas></span>';
+}
+function renderHelmetLogo(t){
+  const target=$("teamHelmet"),canvas=target&&target.querySelector("canvas");
+  if(!canvas)return;
+  const image=new Image();
+  // Rasterize the genuine team mark into 20x20 pixels, then scale with nearest-neighbor.
+  // Drawing an external image is fine for display; pixel data is never read/exported.
+  image.onload=function(){
+    if(!canvas.isConnected||activeTeam!==t.slug)return;
+    try{
+      const ctx=canvas.getContext("2d");
+      ctx.clearRect(0,0,20,20);
+      ctx.imageSmoothingEnabled=false;
+      const ratio=Math.min(18/image.naturalWidth,18/image.naturalHeight);
+      const w=Math.max(1,Math.floor(image.naturalWidth*ratio));
+      const h=Math.max(1,Math.floor(image.naturalHeight*ratio));
+      ctx.drawImage(image,Math.floor((20-w)/2),Math.floor((20-h)/2),w,h);
+      canvas.classList.add("loaded");
+      const label=target.querySelector(".helmet-mark-fallback");if(label)label.hidden=true;
+    }catch(error){/* Keep the pixel fallback if the CDN fails. */}
+  };
+  image.src="https://a.espncdn.com/i/teamlogos/nfl/500/"+encodeURIComponent(t.slug)+".png";
 }
 function jersey(p,t){
-  const n=escapeHTML(p.number==null||p.number===""?"--":String(p.number).slice(0,3)),a=escapeHTML(t.primary),b=escapeHTML(t.secondary);
-  return '<svg viewBox="0 0 52 56" shape-rendering="crispEdges" aria-hidden="true"><path d="M12 4H19V8H33V4H40V9H45V14H49V23H43V30H37V49H15V30H9V23H3V14H7V9H12Z" fill="#050a10"/>'+
-  '<path d="M13 8H20V12H32V8H39V12H44V16H47V22H41V28H35V46H17V28H11V22H5V16H8V12H13Z" fill="'+a+'"/>'+
-  '<path d="M11 15H17V21H11Z M35 15H41V21H35Z M15 42H37V46H15Z" fill="'+b+'"/>'+
-  '<path d="M20 8H32V13H20Z" fill="#172535"/><text x="26" y="34" text-anchor="middle" fill="'+foreground(t.primary)+'" font-family="monospace" font-size="18" font-weight="900">'+n+'</text></svg>';
+  const n=escapeHTML(p.number==null||p.number===""?"--":String(p.number).slice(0,2));
+  const main=escapeHTML(t.primary),trim=escapeHTML(t.secondary);
+  const text=foreground(t.primary);
+  return '<svg viewBox="0 0 56 62" shape-rendering="crispEdges" aria-hidden="true">' +
+    '<path d="M14 5H21V9H35V5H42V10H47V15H52V21H56V32H47V38H43V55H13V38H9V32H0V21H4V15H9V10H14Z" fill="#03070b"/>' +
+    '<path d="M15 10H22V13H34V10H41V14H46V19H50V23H52V29H45V34H40V52H16V34H11V29H4V23H6V19H10V14H15Z" fill="'+main+'"/>' +
+    '<path d="M16 10H22V15H34V10H40V15H35V19H21V15H16Z" fill="'+trim+'"/>' +
+    '<path d="M5 22H12V26H5Z M44 22H51V26H44Z M6 29H13V32H6Z M43 29H50V32H43Z M16 47H40V51H16Z" fill="'+trim+'"/>' +
+    '<path d="M16 19H21V23H16Z M35 19H40V23H35Z" fill="#ffffff" opacity=".32"/>' +
+    '<rect x="17" y="52" width="22" height="3" fill="#03070b"/>' +
+    '<text x="28" y="40" text-anchor="middle" font-family="Pixelify Sans,monospace" font-size="23" font-weight="700" paint-order="stroke" stroke="'+main+'" stroke-width="2.5" fill="'+text+'">'+n+'</text></svg>';
 }
+
 function fromHash(){
   const m=location.hash.match(/^#([a-z]+)(?:\/(offense|defense|special))?$/);
   return m&&BY_SLUG[m[1]]?{slug:m[1],unit:m[2]||"offense"}:null;
@@ -62,6 +97,7 @@ function renderTeam(){
   document.documentElement.style.setProperty("--team",t.primary);
   document.documentElement.style.setProperty("--trim",t.secondary);
   $("teamHelmet").innerHTML=helmet(t);
+  renderHelmetLogo(t);
   $("teamCity").textContent=t.city.toUpperCase();
   $("teamName").textContent=t.name.toUpperCase();
   $("teamDivision").textContent=t.conference+" "+t.division.toUpperCase();
@@ -110,56 +146,190 @@ function drawChoices(q){
   });
   $("teamGrid").innerHTML=html||'<p class="message">NO TEAMS FOUND.</p>';
 }
+
+function normalizeRosterPlayer(p,code){
+  const pos=p.position||{};
+  return {
+    id:String(p.id||""),name:p.displayName||p.fullName||p.name||"",
+    number:String(p.jersey||p.number||""),position:code||String(pos.abbreviation||"").toUpperCase(),
+    rank:null,experience:p.experience&&p.experience.years,college:p.college&&p.college.name,
+    height:p.displayHeight||"",weight:p.displayWeight||"",status:p.status&&p.status.name||""
+  };
+}
 function rosterFallback(response){
   const data={kind:"roster",updatedAt:new Date().toISOString(),offense:[],defense:[],special:[]};
   const maps={offense:new Map(),defense:new Map(),special:new Map()};
-  (response.athletes||[]).forEach(function(section){
+  const athleteGroups=Array.isArray(response.athletes)?response.athletes:[];
+  athleteGroups.forEach(function(section){
     const items=Array.isArray(section.items)?section.items:[section];
     items.forEach(function(p){
-      if(!p||!p.displayName)return;
-      const pos=p.position||{},code=String(pos.abbreviation||"").toUpperCase();
-      const group=SPECIAL.has(code)?"special":OFFENSE.has(code)?"offense":"defense";
-      if(!maps[group].has(code))maps[group].set(code,{code:code||"OTHER",label:LABELS[code]||pos.name||"OTHER",players:[]});
-      maps[group].get(code).players.push({id:String(p.id||""),name:p.displayName,number:p.jersey||"",position:code,rank:null,
-        experience:p.experience&&p.experience.years,college:p.college&&p.college.name,height:p.displayHeight,weight:p.displayWeight,status:p.status&&p.status.name});
+      if(!p||!(p.displayName||p.fullName))return;
+      const pos=p.position||{},code=String(pos.abbreviation||section.abbreviation||"").toUpperCase();
+      const category=SPECIAL.has(code)?"special":OFFENSE.has(code)?"offense":"defense";
+      if(!maps[category].has(code))maps[category].set(code,{
+        code:code||"OTHER",label:LABELS[code]||pos.name||section.position||"OTHER",players:[]
+      });
+      maps[category].get(code).players.push(normalizeRosterPlayer(p,code));
     });
   });
-  UNITS.forEach(function(cat){
-    data[cat]=Array.from(maps[cat].values()).sort(function(a,b){
+  UNITS.forEach(function(category){
+    data[category]=Array.from(maps[category].values()).sort(function(a,b){
       const ia=ORDER.indexOf(a.code),ib=ORDER.indexOf(b.code);
       return (ia<0?99:ia)-(ib<0?99:ib);
     });
   });
   return data;
 }
-async function readSnapshot(){
-  try{
-    const response=await fetch("./data/depthcharts.json",{cache:"no-store"});
-    if(!response.ok)throw Error("no cache");
-    const json=await response.json();
-    snapshot=json&&json.teams?json:null;
-  }catch(e){snapshot=null;}
+function parseLiveDepthChart(payload, roster){
+  if(!payload||!Array.isArray(payload.depthCharts))return null;
+  const units={offense:[],defense:[],special:[]};
+  const byId=new Map();
+  if(roster)UNITS.forEach(function(category){
+    (roster[category]||[]).forEach(function(group){
+      (group.players||[]).forEach(function(p){if(p.id)byId.set(String(p.id),p);});
+    });
+  });
+  payload.depthCharts.forEach(function(chart){
+    const name=String(chart.name||chart.displayName||"").toLowerCase();
+    const category=name.includes("special")?"special":name.includes("defen")?"defense":"offense";
+    const positions=chart.positions||{};
+    Object.keys(positions).forEach(function(key){
+      const pos=positions[key];if(!pos||!Array.isArray(pos.athletes))return;
+      const meta=pos.position||{};
+      const code=String(meta.abbreviation||key).toUpperCase();
+      const players=pos.athletes.map(function(entry,i){
+        const athlete=entry.athlete||entry;
+        const prior=byId.get(String(athlete.id||""))||{};
+        return Object.assign({},prior,{
+          id:String(athlete.id||prior.id||""),
+          name:athlete.displayName||athlete.fullName||prior.name||"",
+          number:String(athlete.jersey||prior.number||""),
+          position:code,rank:entry.rank||i+1
+        });
+      }).filter(function(p){return !!p.name;});
+      if(players.length)units[category].push({code,label:meta.name||LABELS[code]||key,players});
+    });
+  });
+  if(!UNITS.some(function(category){return units[category].length;}))return null;
+  return Object.assign({kind:"depth",updatedAt:new Date().toISOString(),live:true},units);
 }
-async function loadTeam(){
-  const id=++requestId,t=selected();
-  teamData=null;$("count").innerHTML="--<small>PLAYERS</small>";
-  $("dataStatus").textContent="LOADING LINEUP...";
-  $("positions").innerHTML='<div class="message"><span class="football">◆</span>LOADING ROSTER...</div>';
-  if(snapshot&&snapshot.teams[t.id]){
-    teamData=snapshot.teams[t.id];renderPositions();return;
-  }
+function overlayRoster(chart,roster){
+  if(!chart||chart.kind!=="depth"||!roster)return chart;
+  const byId=new Map();
+  UNITS.forEach(function(category){
+    (roster[category]||[]).forEach(function(group){
+      (group.players||[]).forEach(function(p){if(p.id)byId.set(String(p.id),p);});
+    });
+  });
+  const result=Object.assign({},chart);
+  UNITS.forEach(function(category){
+    result[category]=(chart[category]||[]).map(function(group){
+      return Object.assign({},group,{players:(group.players||[]).map(function(player){
+        const current=byId.get(String(player.id));
+        return current?Object.assign({},player,{
+          name:current.name||player.name,number:current.number||player.number,
+          college:current.college||player.college,experience:current.experience!=null?current.experience:player.experience,
+          height:current.height||player.height,weight:current.weight||player.weight,status:current.status||player.status
+        }):player;
+      })});
+    });
+  });
+  return result;
+}
+function validTeamData(value){
+  return value && UNITS.some(function(cat){return Array.isArray(value[cat])&&value[cat].some(function(group){return group.players&&group.players.length;});});
+}
+function cachedTeam(slug){
   try{
-    const response=await fetch("https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/"+t.id+"/roster",{cache:"no-store"});
-    if(!response.ok)throw Error("HTTP "+response.status);
-    const data=await response.json();
+    const text=localStorage.getItem("8bit-roster:"+slug);
+    if(!text)return null;
+    const value=JSON.parse(text);
+    return validTeamData(value)&&Date.now()-new Date(value.updatedAt).getTime()<24*3600*1000?value:null;
+  }catch(error){return null;}
+}
+function storeTeam(slug,value){
+  try{localStorage.setItem("8bit-roster:"+slug,JSON.stringify(value));}catch(error){}
+}
+function useTeamData(value,id,slug){
+  if(id!==requestId||slug!==activeTeam||!validTeamData(value))return;
+  teamData=value;
+  renderPositions();
+}
+async function readSnapshot(){
+  const stamp=Date.now();
+  // Read the committed data independently from GitHub Pages deployments.
+  // GITHUB_TOKEN commits do not automatically trigger a branch Pages rebuild.
+  const urls=[
+    "https://raw.githubusercontent.com/ryanehinkle/8bit-football/main/data/depthcharts.json?rev="+stamp,
+    "./data/depthcharts.json?rev="+stamp
+  ];
+  for(const url of urls){
+    try{
+      const response=await fetch(url,{cache:"no-store"});
+      if(!response.ok)continue;
+      const json=await response.json();
+      if(json&&json.teams&&Object.keys(json.teams).length){
+        snapshot=json;
+        return;
+      }
+    }catch(error){/* Fall back to the site copy, then the live ESPN roster. */}
+  }
+  snapshot=null;
+}
+
+async function loadTeam(options){
+  options=options||{};
+  const id=++requestId,t=selected();
+  const saved=snapshot&&snapshot.teams&&snapshot.teams[t.id];
+  const cached=cachedTeam(t.slug);
+  let freshRoster=null, newestDepth=null;
+  const initial=validTeamData(saved)&&saved.kind==="depth"?saved:
+    validTeamData(cached)?cached:validTeamData(saved)?saved:null;
+  if(initial){
+    useTeamData(initial,id,t.slug);
+    $("dataStatus").textContent+=" · CHECKING LIVE...";
+  }else{
+    teamData=null;$("count").innerHTML="--<small>PLAYERS</small>";
+    $("dataStatus").textContent="LOADING LIVE ROSTER...";
+    $("positions").innerHTML='<div class="message"><span class="football">◆</span>LOADING ROSTER...</div>';
+  }
+  // ESPN allows browser CORS for its roster, but usually blocks direct depth-chart reads.
+  // Start both immediately; use roster as soon as it responds, then upgrade if depth responds.
+  const base="https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/"+t.id;
+  const liveDepth=fetch(base+"/depthcharts?refresh="+Date.now(),{cache:"no-store"})
+    .then(function(response){if(!response.ok)throw Error("depth HTTP "+response.status);return response.json();})
+    .then(function(payload){
+      if(id!==requestId)return;
+      const depth=parseLiveDepthChart(payload,freshRoster);
+      if(depth){
+        newestDepth=depth;
+        storeTeam(t.slug,depth);useTeamData(depth,id,t.slug);
+      }
+    }).catch(function(){/* No browser CORS for many depth-chart responses; snapshot/roster stays visible. */});
+  try{
+    const response=await fetch(base+"/roster?refresh="+Date.now(),{cache:"no-store"});
+    if(!response.ok)throw Error("roster HTTP "+response.status);
+    const payload=await response.json();
     if(id!==requestId)return;
-    teamData=rosterFallback(data);renderPositions();
+    freshRoster=rosterFallback(payload);
+    if(!validTeamData(freshRoster))throw Error("Empty roster");
+    const chart=newestDepth?overlayRoster(newestDepth,freshRoster):
+      validTeamData(saved)&&saved.kind==="depth"?overlayRoster(saved,freshRoster):null;
+    const chosen=chart||freshRoster;
+    chosen.live=true;chosen.lastRosterCheck=new Date().toISOString();
+    storeTeam(t.slug,chosen);useTeamData(chosen,id,t.slug);
   }catch(error){
     if(id!==requestId)return;
-    $("dataStatus").textContent="ROSTER NOT AVAILABLE";
-    $("positions").innerHTML='<div class="message">COULD NOT LOAD THIS TEAM.<br>CHECK YOUR CONNECTION.<button type="button" id="retry" class="retry">RETRY ↻</button></div>';
+    if(!teamData){
+      $("dataStatus").textContent="ROSTER UNAVAILABLE";
+      $("positions").innerHTML='<div class="message">COULD NOT LOAD THIS TEAM.<br>CHECK YOUR CONNECTION.<button type="button" id="retry" class="retry">RETRY ↻</button></div>';
+    }else{
+      $("dataStatus").textContent+=" · OFFLINE / CACHED";
+    }
   }
+  await liveDepth;
 }
+
 function dateText(iso){
   if(!iso)return "";
   const d=new Date(iso);
@@ -181,8 +351,8 @@ function renderPositions(){
   const groups=Array.isArray(teamData[unit])?teamData[unit]:[],t=selected();
   const count=groups.reduce(function(total,g){return total+(g.players||[]).length;},0);
   $("count").innerHTML=String(count).padStart(2,"0")+'<small>PLAYERS</small>';
-  $("dataStatus").textContent=(teamData.kind==="depth"?"DEPTH CHART":"TEAM ROSTER · ORDER UNVERIFIED")+
-    (teamData.updatedAt?" · "+dateText(teamData.updatedAt):"")+" · ESPN";
+  $("dataStatus").textContent=(teamData.kind==="depth"?"ESPN DEPTH CHART":"LIVE ROSTER · DEPTH UNVERIFIED")+
+    (teamData.updatedAt?" · "+dateText(teamData.updatedAt):"")+(teamData.live?" · LIVE CHECKED":" · CACHED");
   if(!count){$("positions").innerHTML='<div class="message">NO PLAYERS LISTED.<br>TRY ANOTHER CATEGORY.</div>';return;}
   let html="";
   groups.forEach(function(group,gi){
@@ -211,7 +381,7 @@ $("shade").addEventListener("click",hidePicker);
 $("teamSearch").addEventListener("input",function(){drawChoices(this.value);});
 $("teamGrid").addEventListener("click",function(e){const choice=e.target.closest("[data-team]");if(choice)setTeam(choice.dataset.team,true);});
 document.querySelectorAll("[data-unit]").forEach(function(b){b.addEventListener("click",function(){setUnit(b.dataset.unit,true);});});
-$("reload").addEventListener("click",async function(){await readSnapshot();loadTeam();});
+$("reload").addEventListener("click",async function(){await readSnapshot();loadTeam({force:true});});
 $("positions").addEventListener("click",function(e){
   if(e.target.closest("#retry")){loadTeam();return;}
   const row=e.target.closest("[data-player]");if(!row)return;
@@ -227,5 +397,9 @@ window.addEventListener("hashchange",function(){
   const h=fromHash();let last="";
   try{last=localStorage.getItem("8bit-last-team")||"";}catch(e){}
   activeTeam=h?h.slug:BY_SLUG[last]?last:"chi";unit=h?h.unit:"offense";
-  saveURL(true);renderTeam();await readSnapshot();loadTeam();
+  saveURL(true);renderTeam();loadTeam();await readSnapshot();
+  if(snapshot&&snapshot.teams&&snapshot.teams[selected().id])loadTeam();
 })();
+setInterval(function(){if(document.visibilityState==="visible")loadTeam();},120000);
+setInterval(async function(){if(document.visibilityState!=="visible")return;await readSnapshot();if(snapshot&&snapshot.teams&&snapshot.teams[selected().id])loadTeam();},300000);
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")loadTeam();});

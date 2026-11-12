@@ -163,6 +163,26 @@ def main():
                 logging.warning("Team %s missing; using previous cache if available", team_id)
     if not teams:
         raise SystemExit("No roster or depth-chart data downloaded; keeping previous snapshot.")
+    # Keep original dates when the actual lineup has not changed.
+    # This avoids creating a commit every five minutes with identical players.
+    for team_id, fresh in list(teams.items()):
+        old = existing.get(team_id)
+        if not old:
+            continue
+        old_data = {key: value for key, value in old.items() if key != "updatedAt"}
+        fresh_data = {key: value for key, value in fresh.items() if key != "updatedAt"}
+        if old_data == fresh_data:
+            teams[team_id] = old
+        elif old.get("kind") == "depth" and fresh.get("kind") == "roster":
+            # A failed ESPN depth-chart call should never erase confirmed
+            # ranked starters simply because the roster endpoint succeeded.
+            old_groups = {key: value for key, value in old.items()
+                          if key in ("offense", "defense", "special")}
+            if any(old_groups.values()):
+                teams[team_id] = old
+    if teams == existing:
+        logging.info("No player or depth chart changes detected. Skipping commit.")
+        return
     DEST.parent.mkdir(parents=True, exist_ok=True)
     payload = {"generatedAt": now(), "source": "ESPN unofficial NFL endpoints", "teams": teams}
     DEST.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")

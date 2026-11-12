@@ -6,8 +6,9 @@ on:
     paths:
       - ".github/workflows/refresh-depthcharts.yml"
       - "scripts/refresh_depthcharts.py"
+      - "app.js"
   schedule:
-    - cron: "17 10 * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
