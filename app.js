@@ -320,7 +320,7 @@ async function loadSleeper(){
       if(!resp.ok)throw Error("Sleeper "+resp.status);
       const all=await resp.json(),teams={};
       Object.values(all).forEach(function(raw){
-        if(!raw||!raw.team)return;
+        if(!raw||!raw.team||raw.active===false)return;
         const p=slimSleeper(raw);
         if(!p)return;
         const code=String(raw.team).toUpperCase();
