@@ -288,13 +288,13 @@ function sleeperMembership(raw){
   // Injury report Q/OUT tags are not roster transaction status.
   return "active";
 }
-function slimSleeper(p){
+function slimSleeper(p,sleeperId){
   const rank=Number(p.depth_chart_order==null?p.depth_chart_position:p.depth_chart_order);
   const pos=String(p.position||"").toUpperCase();
   const name=String(p.full_name||[p.first_name,p.last_name].filter(Boolean).join(" ")).trim();
   if(!name||!pos||pos==="DEF"||pos==="DST"||pos==="HC")return null;
   return {
-    id:String(p.espn_id||""),name,
+    id:String(p.espn_id||""),sleeperId:String(sleeperId||""),name,
     number:p.number==null?"":String(p.number),position:pos,
     rank:Number.isInteger(rank)&&rank>0&&rank<99?rank:null,
     experience:p.years_exp==null?null:p.years_exp,
@@ -307,7 +307,7 @@ async function loadSleeper(){
   if(sleeperRequest)return sleeperRequest;
   sleeperRequest=(async function(){
     try{
-      const cached=JSON.parse(localStorage.getItem("8bit-players-v3")||"null");
+      const cached=JSON.parse(localStorage.getItem("8bit-players-v4")||"null");
       if(cached&&cached.data&&cached.saved&&Date.now()-cached.saved<24*3600*1000){
         sleeperIndex=cached.data;
         sleeperUpdatedAt=new Date(cached.saved).toISOString();
@@ -319,9 +319,10 @@ async function loadSleeper(){
       const resp=await fetch("https://api.sleeper.app/v1/players/nfl",{cache:"default"});
       if(!resp.ok)throw Error("Sleeper "+resp.status);
       const all=await resp.json(),teams={};
-      Object.values(all).forEach(function(raw){
+      Object.entries(all).forEach(function(entry){
+        const sleeperId=entry[0],raw=entry[1];
         if(!raw||!raw.team||raw.active===false)return;
-        const p=slimSleeper(raw);
+        const p=slimSleeper(raw,sleeperId);
         if(!p)return;
         const code=String(raw.team).toUpperCase();
         if(!teams[code])teams[code]=[];
@@ -330,7 +331,7 @@ async function loadSleeper(){
       if(Object.keys(teams).length<30)throw Error("incomplete Sleeper data");
       sleeperIndex=teams;
       sleeperUpdatedAt=new Date().toISOString();
-      try{localStorage.setItem("8bit-players-v3",JSON.stringify({
+      try{localStorage.setItem("8bit-players-v4",JSON.stringify({
         saved:Date.now(),data:teams
       }));}catch(error){}
       return sleeperIndex;
@@ -387,6 +388,7 @@ function addSleeperDepth(roster,t){
         if(match.rank!=null)ranked++;
         return Object.assign({},player,{
           rank:match.rank,
+          sleeperId:match.sleeperId,
           number:player.number||match.number||"",
           college:player.college||match.college||"",
           experience:player.experience==null?match.experience:player.experience,
@@ -420,9 +422,13 @@ function addSleeperDepth(roster,t){
 
 
 function activeCount(roster){
-  return UNITS.reduce(function(total,cat){
-    return total+(roster[cat]||[]).reduce(function(n,g){return n+(g.players||[]).length;},0);
-  },0);
+  const seen=new Set();
+  UNITS.forEach(function(cat){
+    (roster[cat]||[]).forEach(function(g){
+      (g.players||[]).forEach(function(p){seen.add(String(p.id||normName(p.name)));});
+    });
+  });
+  return seen.size;
 }
 function validTeamData(data){return data&&activeCount(data)>0;}
 function cachedTeam(slug){
@@ -444,6 +450,8 @@ async function loadTeam(){
   const cached=cachedTeam(t.slug);
   const initial=validTeamData(cached)?cached:null;
   let espnRoster=null,espnDepth=null,haveSleeper=!!sleeperIndex;
+  let baseline=null,oline=null,injuries=null;
+  const extraData=window.EightBitData||null;
   if(initial)useTeamData(initial,req,t.slug);
   else{
     teamData=null;
@@ -456,48 +464,59 @@ async function loadTeam(){
     if(req!==requestId)return;
     let current=null;
     if(espnRoster){
-      // ESPN roster determines active 53 vs reserves; depth never adds
-      // non-active players back into the active roster.
-      current=espnDepth?applyLiveDepth(espnRoster,espnDepth):
-        haveSleeper?addSleeperDepth(espnRoster,t):espnRoster;
+      // Live ESPN roster = membership. Depth data never reclassifies injured players.
+      current=haveSleeper?addSleeperDepth(espnRoster,t):espnRoster;
     }else if(haveSleeper)current=sleeperTeamRoster(t);
     else current=initial;
     if(!validTeamData(current))return;
+    // The chronological baseline outranks ephemeral player-side depth orders;
+    // a questionable/out designation never demotes or promotes a roster player.
+    if(extraData){
+      if(injuries)current=extraData.applyInjuries(current,injuries);
+      if(espnDepth)current=applyLiveDepth(current,espnDepth);
+      if(baseline)current=extraData.applySkill(current,baseline);
+      if(oline)current=extraData.applyOL(current,oline);
+    }else if(espnDepth)current=applyLiveDepth(current,espnDepth);
     useTeamData(current,req,t.slug);
     if(espnRoster||haveSleeper)storeTeam(t.slug,current);
   }
   const base="https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/"+t.id;
-  // ESPN is the fast, browser-CORS-accessible current 53-man roster.
-  const primary=(async function(){
+  const requests=[];
+  requests.push((async function(){
     try{
       const response=await fetch(base+"/roster",{cache:"no-store"});
       if(!response.ok)throw Error("ESPN HTTP "+response.status);
       const normalized=rosterFallback(await response.json());
       if(req!==requestId)return;
       if(!validTeamData(normalized))throw Error("ESPN roster empty");
-      espnRoster=normalized;espnRoster.live=true;
-      present();
-    }catch(error){/* Sleeper or cached roster remains available. */}
-  })();
-  // In case ESPN ranked depth charts begin allowing CORS, use them.
-  const depth=(async function(){
-    const controller=new AbortController();
-    const timer=setTimeout(function(){controller.abort();},4000);
+      espnRoster=normalized;espnRoster.live=true;present();
+    }catch(error){/* Sleeper / saved roster stays visible. */}
+  })());
+  requests.push((async function(){
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4500);
     try{
       const response=await fetch(base+"/depthcharts",{cache:"no-store",signal:controller.signal});
       if(!response.ok)throw Error("depth HTTP "+response.status);
-      const data=parseLiveDepthChart(await response.json());
-      if(req!==requestId)return;
-      if(data){espnDepth=data;present();}
+      const result=parseLiveDepthChart(await response.json());
+      if(req===requestId&&result){espnDepth=result;present();}
     }catch(error){}finally{clearTimeout(timer);}
-  })();
-  // Sleeper source loads independently of first paint and is cached for 24h.
-  const secondary=loadSleeper().then(function(index){
-    if(req!==requestId)return;
-    haveSleeper=!!index;
-    if(haveSleeper)present();
-  }).catch(function(){});
-  await Promise.allSettled([primary,depth,secondary]);
+  })());
+  requests.push(loadSleeper().then(function(index){
+    if(req===requestId){haveSleeper=!!index;present();}
+  }).catch(function(){}));
+  if(extraData){
+    requests.push(extraData.getBaseline(t).then(function(data){
+      if(req===requestId&&data){baseline=data;present();}
+    }).catch(function(){}));
+    // Positional line data is fetched separately and cached on-device.
+    if(unit==="offense")requests.push(extraData.getOL(t).then(function(data){
+      if(req===requestId&&data){oline=data;present();}
+    }).catch(function(){}));
+    requests.push(extraData.loadInjuries(t).then(function(report){
+      if(req===requestId&&report){injuries=report;present();}
+    }).catch(function(){}));
+  }
+  await Promise.allSettled(requests);
   if(req!==requestId)return;
   if(!teamData){
     $("dataStatus").textContent="NO ROSTER AVAILABLE";
@@ -505,7 +524,6 @@ async function loadTeam(){
     $("reserveArea").innerHTML="";
   }
 }
-
 function dateText(iso){
   if(!iso)return "";
   const d=new Date(iso);
@@ -513,6 +531,7 @@ function dateText(iso){
 }
 function extra(p,g){
   const bits=[];
+  if(p.injury)bits.push("LATEST INJURY <b>"+escapeHTML(p.injury.status)+(p.injury.reason?" · "+escapeHTML(p.injury.reason):"")+"</b>"+(p.injury.at?" · "+escapeHTML(dateText(p.injury.at)):""));
   if(p.position||g.code)bits.push("POS <b>"+escapeHTML(p.position||g.code)+"</b>");
   if(p.experience!=null)bits.push("EXP <b>"+escapeHTML(p.experience)+" YR</b>");
   if(p.height)bits.push("HT <b>"+escapeHTML(p.height)+"</b>");
@@ -521,6 +540,27 @@ function extra(p,g){
   if(p.status&&p.status.toLowerCase()!=="active")bits.push("STATUS <b>"+escapeHTML(p.status)+"</b>");
   if(/^\d+$/.test(String(p.id||"")))bits.push('<a href="https://www.espn.com/nfl/player/_/id/'+escapeHTML(p.id)+'" target="_blank" rel="noopener noreferrer">PLAYER PROFILE ↗</a>');
   return bits.map(function(x){return "<div>"+x+"</div>";}).join("");
+}
+
+function injuryHTML(p){
+  if(!p.injury||!p.injury.status)return "";
+  const label=p.injury.status+(p.injury.reason?" · "+p.injury.reason:"");
+  const stamp=p.injury.at?dateText(p.injury.at):"";
+  return '<span class="player-injury injury-'+escapeHTML(p.injury.code)+'">'+
+    '<span class="injury-dot" aria-hidden="true"></span>'+
+    escapeHTML(label)+(stamp?'<span class="injury-stamp">'+escapeHTML(stamp)+'</span>':"")+'</span>';
+}
+function starterTag(p,code){
+  // Use source-defined lineup status; WR has three listed starters.
+  if(p.starter===true)return " · STARTER";
+  if(p.starter===false)return "";
+  if(p.depthSource==="NFLVERSE")return "";
+  if(p.rank===1&&(["QB","RB","TE","K","P","LS","LT","LG","C","RG","RT"].includes(code)))return " · STARTER";
+  if(p.rank!=null&&code==="WR"&&p.rank<=3)return " · STARTER";
+  if(p.rank!=null&&(["CB","DE","DT","S","FS","SS","EDGE","OLB","ILB"].includes(code))&&p.rank<=2)return " · STARTER";
+  if(p.rank!=null&&code==="LB"&&p.rank<=3)return " · STARTER";
+  if(p.rank!=null&&["NT","MLB"].includes(code)&&p.rank===1)return " · STARTER";
+  return "";
 }
 
 function renderReserves(){
@@ -548,7 +588,7 @@ function renderReserves(){
     if(!sorted.length)html+='<div class="reserve-empty">NO PLAYERS LISTED</div>';
     sorted.forEach(function(p){
       html+='<div class="reserve-player"><span class="reserve-jersey">'+jersey(p,selected())+'</span>'+
-        '<span class="reserve-player-name">'+escapeHTML(p.name)+'</span>'+
+        '<span class="reserve-player-name">'+escapeHTML(p.name)+injuryHTML(p)+'</span>'+
         '<span class="reserve-position">'+escapeHTML(p.position||"--")+'</span></div>';
     });
     html+='</div></details>';
@@ -560,11 +600,12 @@ function renderPositions(){
   const groups=Array.isArray(teamData[unit])?teamData[unit]:[],t=selected();
   const count=activeCount(teamData),inUnit=groups.reduce(function(n,g){return n+(g.players||[]).length;},0);
   $("count").innerHTML=String(count).padStart(2,"0")+'<small>ACTIVE / 53</small>';
-  const depthLabel=teamData.kind==="depth"?"ESPN DEPTH ORDER":
-    teamData.kind==="partial"?"SLEEPER DEPTH ORDER":"ROSTER · DEPTH UNVERIFIED";
+  const depthLabel=teamData.depthSource==="nflverse"||teamData.lineSource==="nflverse"?"DEPTH: NFLVERSE":
+    teamData.kind==="depth"?"DEPTH: ESPN":teamData.kind==="partial"?"DEPTH: SLEEPER":"DEPTH UNVERIFIED";
   const rosterLabel=teamData.source==="Sleeper"?"SLEEPER":"ESPN";
-  $("dataStatus").textContent=rosterLabel+" · "+depthLabel+
-    (teamData.updatedAt?" · "+dateText(teamData.updatedAt):"");
+  $("dataStatus").textContent=rosterLabel+" ROSTER · "+depthLabel+
+    (teamData.depthAsOf||teamData.lineAsOf?" "+dateText(teamData.depthAsOf||teamData.lineAsOf):"")+
+    (teamData.injuryCheckedAt?" · INJURIES CHECKED "+new Date(teamData.injuryCheckedAt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"");
   if(!inUnit){
     $("positions").innerHTML='<div class="message">NO ACTIVE PLAYERS LISTED.<br>TRY ANOTHER CATEGORY.</div>';
     renderReserves();return;
@@ -576,10 +617,10 @@ function renderPositions(){
     html+='<details class="position" open><summary><span class="pos-badge">'+escapeHTML(code.slice(0,2))+'</span><span class="pos-label">'+escapeHTML(title)+'</span><span class="pos-qty">'+group.players.length+'</span><span class="caret">▼</span></summary><div class="player-list">';
     group.players.forEach(function(p,pi){
       const key=gi+":"+pi,expanded=opened===key;
-      const rank=p.rank==null?"--":String(p.rank).padStart(2,"0");
-      html+='<div class="player"><button type="button" class="player-button" data-player="'+key+'" aria-expanded="'+expanded+'">'+
+      const rank=p.rank==null?"--":String(p.rank);
+      html+='<div class="player'+(p.injury?" player-injury-"+escapeHTML(p.injury.code):"")+'"><button type="button" class="player-button" data-player="'+key+'" aria-expanded="'+expanded+'">'+
         '<span class="player-rank">'+escapeHTML(rank)+'</span><span class="jersey">'+jersey(p,t)+'</span>'+
-        '<span class="player-detail"><span class="player-name">'+escapeHTML(p.name||"Unknown player")+'</span><span class="player-meta">'+escapeHTML(code)+(p.rank===1&&(teamData.kind==="depth"||teamData.kind==="partial")?" · STARTER":"")+'</span></span>'+
+        '<span class="player-detail"><span class="player-name">'+escapeHTML(p.name||"Unknown player")+'</span><span class="player-meta">'+escapeHTML(code)+starterTag(p,code)+'</span>'+injuryHTML(p)+'</span>'+
         '<span class="player-arrow">▶</span></button>';
       if(expanded)html+='<div class="extra">'+extra(p,group)+'</div>';
       html+='</div>';

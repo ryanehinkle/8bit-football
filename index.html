@@ -8,9 +8,10 @@
 <title>8-Bit Football</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link href="./style.css" rel="stylesheet">
-<script src="./app.js" defer></script>
+<script src="./live-data.js?v=3" defer></script>
+<script src="./app.js?v=3" defer></script>
 </head>
 <body>
 <div class="app">
@@ -47,6 +48,7 @@
         <button type="button" data-unit="special" class="tab" aria-pressed="false">★ SPECIAL</button>
       </nav>
       <div class="data-bar"><span id="dataStatus" role="status">LOADING LINEUP...</span><button type="button" id="reload" title="Refresh" aria-label="Refresh roster">↻</button></div>
+      <div class="injury-key" aria-label="Availability colors"><span><i class="key-q">Q</i> Questionable</span><span><i class="key-d">D</i> Doubtful</span><span><i class="key-out">OUT</i> Out</span></div>
       <div id="positions" class="positions" aria-live="polite"><div class="message"><span class="football">◆</span> LOADING ROSTER...</div></div>
       <section id="reserveArea" class="reserve-area" aria-label="Practice Squad and Injured Reserve"></section>
     </section>

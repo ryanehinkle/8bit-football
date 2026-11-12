@@ -131,3 +131,58 @@ body.modal-open{overflow:hidden}
 .reserve-player-name{font-size:20px;line-height:1.04;flex:1;font-weight:700}
 .reserve-position{font:9px "Press Start 2P",monospace;color:var(--gold)}
 .reserve-empty{padding:18px 12px;text-align:center;font:9px/1.8 "Press Start 2P",monospace;color:#96afc0}
+
+/* Accessibility pass: keep the retro face for titles, but use crisp mono for
+   tiny numerals, status codes and abbreviations. Distinct 2/8/0 glyphs. */
+:root{--q:#ffd565;--d:#ff9c57;--out:#ff6471;--good:#7fdf9f}
+.count,.count small,.player-rank,.pos-badge,.pos-qty,.reserve-badge,.reserve-count,
+.reserve-position,.season,.data-bar,.player-meta,.choice-flag,.reserve-arrow,
+.injury-key,.player-injury,.injury-stamp{
+  font-family:"Space Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-weight:700;font-variant-numeric:tabular-nums;
+}
+.count{font-size:24px;letter-spacing:0}
+.count small{font-size:9px;letter-spacing:.2px}
+.player-rank{font-size:13px;letter-spacing:.1px;color:#cadbe5}
+.pos-badge{font-size:11px}
+.pos-qty{font-size:13px}
+.player-meta{font-size:12px;letter-spacing:.25px;color:#9fbdcb}
+.season{font-size:11px}.season b{font-size:16px}
+.data-bar{font-size:11px;line-height:1.65;flex-wrap:wrap;letter-spacing:0}
+.data-bar span{flex:1}
+.player-injury{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;
+ font-size:12px;line-height:1.4;letter-spacing:0;color:var(--q)}
+.player-injury .injury-dot{width:7px;height:7px;background:currentColor;flex:0 0 7px}
+.player-injury.injury-out{color:var(--out)}
+.player-injury.injury-d{color:var(--d)}
+.player-injury.injury-dtd{color:var(--q)}
+.player-injury.injury-probable{color:var(--good)}
+.injury-stamp{font-size:9px;color:#98adba;white-space:nowrap}
+.player.player-injury-q,.player.player-injury-dtd{box-shadow:inset 4px 0 0 var(--q)}
+.player.player-injury-out{box-shadow:inset 4px 0 0 var(--out)}
+.player.player-injury-d{box-shadow:inset 4px 0 0 var(--d)}
+.player.player-injury-probable{box-shadow:inset 4px 0 0 var(--good)}
+.player.player-injury-q .player-button{background:rgba(255,213,101,.05)}
+.player.player-injury-out .player-button{background:rgba(255,100,113,.085)}
+.player.player-injury-d .player-button{background:rgba(255,156,87,.05)}
+.injury-key{display:flex;flex-wrap:wrap;align-items:center;gap:7px 15px;margin:6px 2px 17px;
+ font-size:10px;color:#a9bdca;letter-spacing:-.2px}
+.injury-key span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.injury-key i{display:grid;place-items:center;min-width:22px;padding:3px 4px;
+ font-size:11px;font-weight:700;font-style:normal;background:#223449;border:1px solid currentColor}
+.injury-key i.key-q{color:var(--q)}
+.injury-key i.key-d{color:var(--d)}
+.injury-key i.key-out{color:var(--out)}
+.reserve-player-name .player-injury{display:flex;font-size:11px}
+.reserve-count{font-size:13px}
+.reserve-position{font-size:12px}
+@media(max-width:370px){.injury-key{gap:7px}.player-injury{font-size:11px}.jersey{width:44px;flex-basis:44px}}
+
+/* Utility stats stay legible on small phones; the big arcade headings stay pixel. */
+.extra,.extra b,.reserve-player-name .injury-stamp{
+  font-family:"Space Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-variant-numeric:tabular-nums;
+}
+.extra{font-size:12px;line-height:1.55;letter-spacing:0}
+.extra b{font-weight:700}
+@media(max-width:370px){.extra{padding-left:78px;font-size:11px}}

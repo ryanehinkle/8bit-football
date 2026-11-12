@@ -27,3 +27,39 @@ No backend, keys, workflows, or scheduled server required. GitHub Pages serves t
 Run python -m http.server 8000 and open http://localhost:8000.
 
 Unofficial fan site, not affiliated with NFL, ESPN, or Sleeper.
+
+
+## Current injuries and depth-chart stability
+
+ESPN league-wide injury reports are checked when a team is selected, cached for
+four minutes, and refreshed automatically while the page is in use. Current
+Questionable (yellow), Doubtful (orange), Out (red), and Day-to-Day indicators
+appear next to affected players with injury descriptions and source dates when
+available. Injury status **never changes the position or depth rank**.
+
+The site combines current ESPN active/reserve roster membership with Sleeper
+player-ID crosswalks and nflverse's 2026 ESPN-derived weekly depth snapshots
+(https://github.com/antonwilms/sleeper-dashboard-data). For QB, RB, WR, and TE,
+it uses an established rank from up to six recent weekly snapshots rather than
+blindly accepting a one-week drop after an injury. For a verified consecutive
+two-week role change, the latest rank can win unless a current injury
+designation suggests a temporary shift. Three WRs can be tagged as starters.
+
+Five offensive-line positions (LT, LG, C, RG, RT) are sourced separately
+from the recent nflverse positional-line snapshots. Unmatched players remain
+in the Other Offensive Linemen section without invented ranks. Defense and
+special teams use published ranks when available.
+
+The large historical lineup files are cached locally and load asynchronously.
+The app shows dates for depth snapshots and checks the live ESPN injury
+feed directly; no GitHub Actions runners are needed. **Depth orders are sourced
+snapshots, not guaranteed to reflect every last-minute coaching decision**.
+The actual player roster is checked on every team selection and every two
+minutes while active. The source can report injuries with delays, and upstream
+records lacking a recent report date are not displayed as current.
+
+## Readable supporting typography
+
+Small ranks, measurements, injury statuses, and abbreviations use an easier
+to distinguish monospace while keeping arcade headline text and the original
+pixel jerseys intact.
