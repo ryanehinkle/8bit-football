@@ -180,3 +180,9 @@ body.modal-open{overflow:hidden}
 .extra{font-size:12px;line-height:1.55;letter-spacing:0}
 .extra b{font-weight:700}
 @media(max-width:370px){.extra{padding-left:78px;font-size:11px}}
+
+/* Explicit ACTIVE/cleared updates are distinct from missing reports. */
+.player-injury.injury-active{color:var(--good)}
+.player.player-injury-active{box-shadow:inset 4px 0 0 var(--good)}
+.player.player-injury-active .player-button{background:rgba(127,223,159,.045)}
+.injury-key i.key-active{color:var(--good)}

@@ -249,43 +249,71 @@ function comparePlayers(a,b){
 
 /* The browser-safe Sleeper player index supplies independently reported depth
    order and membership. Fetched at most once per day, never per team switch. */
-let sleeperIndex=null,sleeperRequest=null,sleeperUpdatedAt=null;
+let sleeperIndex=null,sleeperRequest=null,sleeperUpdatedAt=null,sleeperLoadedAt=0;
 const SLEEPER_CODES={wsh:["WAS","WSH"],jax:["JAX","JAC"],lar:["LAR","LA"],
   lv:["LV","OAK"],lac:["LAC","SD"]};
 function normName(value){
   return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
     .toLowerCase().replace(/[^a-z0-9]/g,"");
 }
+
 function sleeperMembership(raw){
-  const status=String(raw.status||"")+" "+String(raw.roster_status||"");
-  if(/practice[\s-]*squad|\bPS\b/i.test(status))return "practice";
-  if(/injured[\s-]*reserve|reserve\/injured|\bIR\b/i.test(status))return "ir";
-  if(/PUP|NFI|suspend/i.test(status))return "other";
-  // Injury report Q/OUT tags are not roster transaction status.
+  // Sleeper uses two separate concepts: real roster membership (status)
+  // and game availability (injury_status). OUT != NFL injured reserve.
+  const state=String(raw.status||"")+" "+String(raw.roster_status||"");
+  const injury=String(raw.injury_status||"");
+  if(/\bpractice[\s-]*squad\b|\bpractice[\s-]*team\b|\bPS\b/i.test(state))return "practice";
+  if(/\binjured[\s/-]*reserve\b|\breserve\/injured\b|\bIR\b/i.test(state)||
+     /^IR$/i.test(injury))return "ir";
+  if(/\bPUP\b|\bNFI\b|\bsuspend/i.test(state)||/^(PUP|NFI|Sus)$/i.test(injury))return "other";
   return "active";
+}
+function slimInjury(raw){
+  const status=String(raw.injury_status||"").trim(),low=status.toLowerCase();
+  let code="";
+  if(/^(q|questionable|gtd|game.time.decision)$/.test(low))code="q";
+  else if(/^(d|doubtful)$/.test(low))code="d";
+  else if(/^(o|out)$/.test(low))code="out";
+  else if(/^(ir|injured.reserve)$/.test(low))code="ir";
+  else if(/^(pup|nfi)$/.test(low))code="pup";
+  else if(/^(probable)$/.test(low))code="probable";
+  if(!code)return null;
+  const rawReason=String(raw.injury_body_part||raw.injury_notes||"").trim();
+  const reason=rawReason.length>66?rawReason.slice(0,63).trim()+"…":rawReason;
+  const stamp=Number(raw.news_updated);
+  const at=Number.isFinite(stamp)&&stamp>1500000000000?
+    new Date(stamp).toISOString():raw.injury_start_date||null;
+  return {code,status:code==="q"?"Questionable":code==="d"?"Doubtful":
+     code==="out"?"Out":code==="ir"?"IR":code==="pup"?"PUP":"Probable",
+     reason,at,source:"Sleeper",sleeperId:String(raw.player_id||"")};
 }
 function slimSleeper(p,sleeperId){
   const rank=Number(p.depth_chart_order==null?p.depth_chart_position:p.depth_chart_order);
   const pos=String(p.position||"").toUpperCase();
   const name=String(p.full_name||[p.first_name,p.last_name].filter(Boolean).join(" ")).trim();
   if(!name||!pos||pos==="DEF"||pos==="DST"||pos==="HC")return null;
+  const membership=sleeperMembership(p);
   return {
     id:String(p.espn_id||""),sleeperId:String(sleeperId||""),name,
     number:p.number==null?"":String(p.number),position:pos,
     rank:Number.isInteger(rank)&&rank>0&&rank<99?rank:null,
     experience:p.years_exp==null?null:p.years_exp,
     college:p.college||"",height:p.height||"",weight:p.weight||"",
-    status:String(p.status||""),membership:sleeperMembership(p)
+    status:String(p.status||""),membership,injury:slimInjury(Object.assign({},p,{player_id:sleeperId})),
+    injuryStatus:p.injury_status||"",injuryStart:p.injury_start_date||null,
+    newsUpdated:Number(p.news_updated)||0
   };
 }
+
 async function loadSleeper(){
-  if(sleeperIndex)return sleeperIndex;
+  if(sleeperIndex&&Date.now()-sleeperLoadedAt<23.5*3600000)return sleeperIndex;
   if(sleeperRequest)return sleeperRequest;
+  sleeperIndex=null;
   sleeperRequest=(async function(){
     try{
-      const cached=JSON.parse(localStorage.getItem("8bit-players-v4")||"null");
+      const cached=JSON.parse(localStorage.getItem("8bit-players-v5")||"null");
       if(cached&&cached.data&&cached.saved&&Date.now()-cached.saved<24*3600*1000){
-        sleeperIndex=cached.data;
+        sleeperIndex=cached.data;sleeperLoadedAt=cached.saved;
         sleeperUpdatedAt=new Date(cached.saved).toISOString();
         return sleeperIndex;
       }
@@ -297,17 +325,18 @@ async function loadSleeper(){
       const all=await resp.json(),teams={};
       Object.entries(all).forEach(function(entry){
         const sleeperId=entry[0],raw=entry[1];
-        if(!raw||!raw.team||raw.active===false)return;
+        if(!raw||!raw.team)return;
         const p=slimSleeper(raw,sleeperId);
-        if(!p)return;
+        // IR and practice squad may be marked inactive in fantasy feeds.
+        if(!p||(raw.active===false&&p.membership==="active"))return;
         const code=String(raw.team).toUpperCase();
         if(!teams[code])teams[code]=[];
         teams[code].push(p);
       });
       if(Object.keys(teams).length<30)throw Error("incomplete Sleeper data");
-      sleeperIndex=teams;
+      sleeperIndex=teams;sleeperLoadedAt=Date.now();
       sleeperUpdatedAt=new Date().toISOString();
-      try{localStorage.setItem("8bit-players-v4",JSON.stringify({
+      try{localStorage.setItem("8bit-players-v5",JSON.stringify({
         saved:Date.now(),data:teams
       }));}catch(error){}
       return sleeperIndex;
@@ -315,7 +344,7 @@ async function loadSleeper(){
       sleeperRequest=null;
       return null;
     }
-  })();
+  })().finally(function(){sleeperRequest=null;});
   return sleeperRequest;
 }
 function sleeperPlayers(t){
@@ -349,50 +378,78 @@ function sleeperTeamRoster(t){
   return out;
 }
 function addSleeperDepth(roster,t){
-  if(!roster||!sleeperIndex||roster.kind==="depth")return roster;
-  const data=sleeperPlayers(t);if(!data.length)return roster;
+  if(!roster||!sleeperIndex)return roster;
+  const data=sleeperPlayers(t);
+  if(!data.length)return roster;
   const byId=new Map(),byName=new Map();
-  data.forEach(function(p){if(p.id)byId.set(p.id,p);byName.set(normName(p.name),p);});
+  data.forEach(p=>{if(p.id)byId.set(String(p.id),p);byName.set(normName(p.name),p);});
   let ranked=0;
   const result=Object.assign({},roster);
-  // ESPN supplies current membership, Sleeper supplies published depth order.
-  UNITS.forEach(function(cat){
-    result[cat]=(roster[cat]||[]).map(function(group){
-      const players=group.players.map(function(player){
+  const reserve={practice:[],ir:[],other:[]};
+  const seen=new Set();
+  const playerKey=p=>p.id?"e:"+p.id:p.sleeperId?"s:"+p.sleeperId:"n:"+normName(p.name);
+  function insertReserve(p,membership){
+    const key=playerKey(p);
+    if(seen.has(key)||RESERVE_KEYS.some(k=>reserve[k].some(x=>
+      x.id&&p.id&&String(x.id)===String(p.id)||normName(x.name)===normName(p.name))))return;
+    seen.add(key);
+    const player=Object.assign({},p,{membership});
+    reserve[membership].push(player);
+  }
+  ["practice","ir","other"].forEach(k=>
+    (roster.reserve&&roster.reserve[k]||[]).forEach(p=>insertReserve(p,k)));
+  UNITS.forEach(cat=>{
+    result[cat]=(roster[cat]||[]).map(group=>{
+      const players=[];
+      (group.players||[]).forEach(player=>{
         const match=byId.get(String(player.id||""))||byName.get(normName(player.name));
-        if(!match)return player;
-        if(match.rank!=null)ranked++;
-        return Object.assign({},player,{
-          rank:match.rank,
-          sleeperId:match.sleeperId,
-          number:player.number||match.number||"",
-          college:player.college||match.college||"",
-          experience:player.experience==null?match.experience:player.experience,
-          height:player.height||match.height,weight:player.weight||match.weight
-        });
+        let updated=Object.assign({},player);
+        if(match){
+          if(match.rank!=null)ranked++;
+          updated=Object.assign(updated,{
+            rank:match.rank,sleeperId:match.sleeperId,
+            number:updated.number||match.number||"",
+            college:updated.college||match.college||"",
+            experience:updated.experience==null?match.experience:updated.experience,
+            height:updated.height||match.height,weight:updated.weight||match.weight,
+            injury:match.injury||updated.injury||null
+          });
+          if(match.membership!=="active"){
+            insertReserve(updated,match.membership);
+            return;
+          }
+        }
+        players.push(updated);
       });
       players.sort(comparePlayers);
       return Object.assign({},group,{players});
-    });
+    }).filter(g=>g.players.length);
   });
-  if(ranked){result.kind="partial";result.depthSource="Sleeper";}
-  // When ESPN has no reserve entries, Sleeper can supply explicit reserve lists.
-  const reserve=Object.assign({practice:[],ir:[],other:[]},roster.reserve||{});
-  const known=new Set();
-  UNITS.forEach(function(cat){
-    (result[cat]||[]).forEach(function(g){g.players.forEach(function(p){
-      known.add(p.id||normName(p.name));
-    });});
+  // ESPN's roster endpoint often has only the active 53; merge *all* known
+  // reserve names from Sleeper instead of adding reserves only when empty.
+  data.forEach(p=>{
+    if(p.membership==="active")return;
+    // Prefer details from ESPN's existing reserves when the player matches.
+    const base=(roster.reserve&&RESERVE_KEYS.flatMap(k=>roster.reserve[k]||[])||[])
+      .find(x=>x.id&&p.id&&String(x.id)===String(p.id)||normName(x.name)===normName(p.name));
+    insertReserve(Object.assign({},p,base||{},{
+      sleeperId:p.sleeperId,
+      injury:p.injury||base&&base.injury||null
+    }),p.membership);
   });
-  RESERVE_KEYS.forEach(function(key){
-    (reserve[key]||[]).forEach(function(p){known.add(p.id||normName(p.name));});
-    if(!reserve[key].length){
-      reserve[key]=data.filter(function(p){return p.membership===key &&
-        !known.has(p.id||normName(p.name));});
-      reserve[key].forEach(function(p){known.add(p.id||normName(p.name));});
+  // Enrich ESPN reserve entries with fantasy injury details, even when ESPN
+  // already listed the player and no new reserve row was inserted.
+  RESERVE_KEYS.forEach(k=>reserve[k].forEach(p=>{
+    const m=byId.get(String(p.id||""))||byName.get(normName(p.name));
+    if(m){
+      p.sleeperId=p.sleeperId||m.sleeperId;
+      p.number=p.number||m.number;
+      p.injury=m.injury||p.injury||null;
     }
-  });
+  }));
   result.reserve=reserve;
+  result.reserveVerifiedAt=sleeperUpdatedAt;
+  if(ranked){result.kind="partial";result.depthSource="Sleeper";}
   return result;
 }
 
@@ -421,13 +478,14 @@ function useTeamData(data,req,slug){
   if(req!==requestId||slug!==activeTeam||!validTeamData(data))return;
   teamData=data;renderPositions();
 }
-async function loadTeam(){
+async function loadTeam(force){
   const req=++requestId,t=selected();
   const cached=cachedTeam(t.slug);
   const initial=validTeamData(cached)?cached:null;
   let espnRoster=null,espnDepth=null,haveSleeper=!!sleeperIndex;
-  let baseline=null,oline=null,injuries=null;
+  let baseline=null,oline=null,injuries=null,injuryFetchFailed=false;
   const extraData=window.EightBitData||null;
+  if(extraData&&extraData.lastKnown)injuries=extraData.lastKnown(t);
   if(initial)useTeamData(initial,req,t.slug);
   else{
     teamData=null;
@@ -445,6 +503,9 @@ async function loadTeam(){
     }else if(haveSleeper)current=sleeperTeamRoster(t);
     else current=initial;
     if(!validTeamData(current))return;
+    if(injuryFetchFailed&&!injuries){
+      current=Object.assign({},current,{injuryUnavailable:true});
+    }
     // The chronological baseline outranks ephemeral player-side depth orders;
     // a questionable/out designation never demotes or promotes a roster player.
     if(extraData){
@@ -478,7 +539,20 @@ async function loadTeam(){
     }catch(error){}finally{clearTimeout(timer);}
   })());
   requests.push(loadSleeper().then(function(index){
-    if(req===requestId){haveSleeper=!!index;present();}
+    if(req!==requestId)return;
+    haveSleeper=!!index;
+    if(haveSleeper&&extraData&&extraData.ingestSleeper){
+      const history=extraData.ingestSleeper(t,sleeperPlayers(t));
+      if(history&&history.length)injuries=Object.assign({},injuries||{},{
+        rows:history,
+        teamId:String(t.id),team:(SLEEPER_CODES[t.slug]||[t.slug.toUpperCase()])[0],
+        checkedAt:injuries&&injuries.checkedAt||null,
+        source:injuries&&injuries.source||"Last known",
+        verified:injuries&&injuries.verified||false,
+        historyOnly:!(injuries&&injuries.verified)
+      });
+    }
+    present();
   }).catch(function(){}));
   if(extraData){
     requests.push(extraData.getBaseline(t).then(function(data){
@@ -488,9 +562,14 @@ async function loadTeam(){
     if(unit==="offense")requests.push(extraData.getOL(t).then(function(data){
       if(req===requestId&&data){oline=data;present();}
     }).catch(function(){}));
-    requests.push(extraData.loadInjuries(t).then(function(report){
-      if(req===requestId&&report){injuries=report;present();}
-    }).catch(function(){}));
+    requests.push(extraData.loadInjuries(t,!!force).then(function(report){
+      if(req!==requestId)return;
+      if(report){injuries=report;injuryFetchFailed=false;}
+      else injuryFetchFailed=true;
+      present();
+    }).catch(function(){
+      if(req===requestId){injuryFetchFailed=true;present();}
+    }));
   }
   await Promise.allSettled(requests);
   if(req!==requestId)return;
@@ -508,6 +587,9 @@ function dateText(iso){
 function extra(p,g){
   const bits=[];
   if(p.injury)bits.push("LATEST INJURY <b>"+escapeHTML(p.injury.status)+(p.injury.reason?" · "+escapeHTML(p.injury.reason):"")+"</b>"+(p.injury.at?" · "+escapeHTML(dateText(p.injury.at)):""));
+  if(p.injury&&p.injury.source)bits.push("REPORT SOURCE <b>"+escapeHTML(p.injury.source)+"</b>");
+  if(p.injury&&p.injury.url&&/^https:\/\//.test(p.injury.url))
+    bits.push('<a href="'+escapeHTML(p.injury.url)+'" target="_blank" rel="noopener noreferrer">OFFICIAL REPORT ↗</a>');
   if(p.position||g.code)bits.push("POS <b>"+escapeHTML(p.position||g.code)+"</b>");
   if(p.experience!=null)bits.push("EXP <b>"+escapeHTML(p.experience)+" YR</b>");
   if(p.height)bits.push("HT <b>"+escapeHTML(p.height)+"</b>");
@@ -558,10 +640,11 @@ function renderReserves(){
       const i=ORDER.indexOf(p.position),j=ORDER.indexOf(q.position);
       return (i<0?99:i)-(j<0?99:j)||p.name.localeCompare(q.name);
     });
-    html+='<details class="reserve-card"><summary><span class="reserve-badge">'+tag+'</span>'+
+    html+='<details class="reserve-card"'+(key==="ir"&&sorted.length?' open':'')+'><summary><span class="reserve-badge">'+tag+'</span>'+
       '<span class="reserve-label">'+name+'</span><span class="reserve-count">'+sorted.length+'</span>'+
       '<span class="reserve-arrow">▼</span></summary><div class="reserve-players">';
-    if(!sorted.length)html+='<div class="reserve-empty">NO PLAYERS LISTED</div>';
+    if(!sorted.length)html+='<div class="reserve-empty">'+
+      (teamData.reserveVerifiedAt||(key==="ir"&&teamData.injuryVerified)?'NONE REPORTED':'LIST NOT VERIFIED YET')+'</div>';
     sorted.forEach(function(p){
       html+='<div class="reserve-player"><span class="reserve-jersey">'+jersey(p,selected())+'</span>'+
         '<span class="reserve-player-name">'+escapeHTML(p.name)+injuryHTML(p)+'</span>'+
@@ -579,9 +662,15 @@ function renderPositions(){
   const depthLabel=teamData.depthSource==="nflverse"||teamData.lineSource==="nflverse"?"DEPTH: NFLVERSE":
     teamData.kind==="depth"?"DEPTH: ESPN":teamData.kind==="partial"?"DEPTH: SLEEPER":"DEPTH UNVERIFIED";
   const rosterLabel=teamData.source==="Sleeper"?"SLEEPER":"ESPN";
+  const injuryText=teamData.injuryVerified&&teamData.injuryCheckedAt?
+    " · INJURIES "+teamData.injurySource+" CHECKED "+
+      new Date(teamData.injuryCheckedAt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):
+    teamData.injuryHistoryOnly?" · LAST REPORTED STATUS · LIVE FEED UNAVAILABLE":
+    teamData.injuryUnavailable?" · LIVE INJURIES UNAVAILABLE":
+      " · INJURIES: DAILY / PENDING";
   $("dataStatus").textContent=rosterLabel+" ROSTER · "+depthLabel+
     (teamData.depthAsOf||teamData.lineAsOf?" "+dateText(teamData.depthAsOf||teamData.lineAsOf):"")+
-    (teamData.injuryCheckedAt?" · INJURIES CHECKED "+new Date(teamData.injuryCheckedAt).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"");
+    injuryText;
   if(!inUnit){
     $("positions").innerHTML='<div class="message">NO ACTIVE PLAYERS LISTED.<br>TRY ANOTHER CATEGORY.</div>';
     renderReserves();return;
@@ -615,7 +704,7 @@ $("shade").addEventListener("click",hidePicker);
 $("teamSearch").addEventListener("input",function(){drawChoices(this.value);});
 $("teamGrid").addEventListener("click",function(e){const choice=e.target.closest("[data-team]");if(choice)setTeam(choice.dataset.team,true);});
 document.querySelectorAll("[data-unit]").forEach(function(b){b.addEventListener("click",function(){setUnit(b.dataset.unit,true);});});
-$("reload").addEventListener("click",function(){loadTeam();});
+$("reload").addEventListener("click",function(){loadTeam(true);});
 $("positions").addEventListener("click",function(e){
   if(e.target.closest("#retry")){loadTeam();return;}
   const row=e.target.closest("[data-player]");if(!row)return;
@@ -634,5 +723,18 @@ window.addEventListener("hashchange",function(){
   saveURL(true);renderTeam();loadTeam();
 })();
 setInterval(function(){if(document.visibilityState==="visible")loadTeam();},120000);
+setInterval(async function(){
+  if(document.visibilityState!=="visible"||!teamData||!window.EightBitData)return;
+  const req=requestId,t=selected();
+  try{
+    const report=await window.EightBitData.loadInjuries(t);
+    if(req!==requestId)return;
+    if(report){
+      const next=window.EightBitData.applyInjuries(teamData,report);
+      useTeamData(next,req,t.slug);
+      storeTeam(t.slug,next);
+    }
+  }catch(error){}
+},60000);
 // Main roster refresh is direct from ESPN; no GitHub runner is required.
 document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")loadTeam();});

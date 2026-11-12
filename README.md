@@ -63,3 +63,13 @@ records lacking a recent report date are not displayed as current.
 Small ranks, measurements, injury statuses, and abbreviations use an easier
 to distinguish monospace while keeping arcade headline text and the original
 pixel jerseys intact.
+
+## Last reported injury status (November 2026 update)
+
+Player badges keep the last explicit injury or availability designation (Questionable, Doubtful, Out, IR, PUP, or Active) until a newer *published* update replaces it. A player disappearing from an ESPN/Sleeper report does not imply a return to health. Active/cleared must be explicitly reported and is green.
+
+Statuses are saved locally on the current device. The first-load official-source baseline includes the Bears' Nov. 6, 2026 Questionable (Thumb/Toe) designation for Kyle Monangai, still the last Bears game designation cross-checked November 11. Sources and dates are shown in player details; subsequent dated updates override older known statuses.
+
+The site checks ESPN's league injury feed while active and uses Sleeper's player data as another input. Sleeper's full player index is cached for up to a day to reduce downloads. Practice Squad and IR classifications combine ESPN roster membership and Sleeper's roster/injury designations; a weekly Out designation does not mean IR.
+
+Live API providers are outside this site's control. Changes cannot be guaranteed instantly, and local last-known history does not synchronize automatically between separate browsers. A failed live feed displays 'LAST REPORTED STATUS · LIVE FEED UNAVAILABLE' rather than pretending everyone is healthy.
