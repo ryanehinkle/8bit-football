@@ -24,7 +24,7 @@ const SPECIAL=new Set(["K","P","LS","KR","PR"]);
 const ORDER=["QB","RB","FB","WR","TE","LT","LG","C","RG","RT","OT","OG","G","OL","DE","DT","NT","EDGE","OLB","ILB","LB","MLB","CB","FS","SS","S","DB","K","P","LS","KR","PR"];
 const LABELS={QB:"QUARTERBACK",RB:"RUNNING BACK",FB:"FULLBACK",WR:"WIDE RECEIVER",TE:"TIGHT END",LT:"LEFT TACKLE",LG:"LEFT GUARD",C:"CENTER",RG:"RIGHT GUARD",RT:"RIGHT TACKLE",OT:"OFFENSIVE TACKLE",OG:"OFFENSIVE GUARD",G:"GUARD",OL:"OFFENSIVE LINE",DE:"DEFENSIVE END",DT:"DEFENSIVE TACKLE",NT:"NOSE TACKLE",EDGE:"EDGE",OLB:"OUTSIDE LINEBACKER",ILB:"INSIDE LINEBACKER",LB:"LINEBACKER",MLB:"MIDDLE LINEBACKER",CB:"CORNERBACK",FS:"FREE SAFETY",SS:"STRONG SAFETY",S:"SAFETY",DB:"DEFENSIVE BACK",K:"KICKER",P:"PUNTER",LS:"LONG SNAPPER",KR:"KICK RETURNER",PR:"PUNT RETURNER"};
 const $=function(id){return document.getElementById(id);};
-let activeTeam="chi",unit="offense",snapshot=null,teamData=null,opened=null,requestId=0;
+let activeTeam="chi",unit="offense",teamData=null,opened=null,requestId=0;
 
 function escapeHTML(x){return String(x==null?"":x).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function foreground(hex){
@@ -147,274 +147,362 @@ function drawChoices(q){
   $("teamGrid").innerHTML=html||'<p class="message">NO TEAMS FOUND.</p>';
 }
 
+
+/* Active 53-man rosters are separate from Practice Squad, IR and other reserves. */
+const RESERVE_KEYS=["practice","ir","other"];
+function cleanStatus(value){
+  if(!value)return "";
+  if(typeof value==="object")return String(value.name||value.displayName||value.type||value.abbreviation||"").trim();
+  return String(value).trim();
+}
+function classifyStatus(raw,group){
+  const pieces=[
+    raw.rosterStatus,raw.roster_status,raw.status,
+    raw.designation,raw.rosterDesignation,
+    group && (group.position||group.name||group.displayName)
+  ].map(cleanStatus).filter(Boolean).join(" ").toLowerCase();
+  if(/\bpractice[\s-]*squad\b|\bpractice[\s-]*team\b|\bpractice[\s-]*roster\b|\bps\b/.test(pieces))return "practice";
+  if(/\binjured reserve\b|\breserve\/injured\b|\binjured\/\d+\b|\binjured\/ir\b|\bir\b|\bir-r\b|\bir-nfi\b/.test(pieces))return "ir";
+  if(/\bpup\b|\bphysically unable\b|\bnon.football\b|\bnfi\b|\bsuspend(ed|sion)?\b|\breserve\/\b/.test(pieces))return "other";
+  return "active";
+}
 function normalizeRosterPlayer(p,code){
-  const pos=p.position||{};
+  const pos=p.position||{},es=p.status||{};
   return {
     id:String(p.id||""),name:p.displayName||p.fullName||p.name||"",
-    number:String(p.jersey||p.number||""),position:code||String(pos.abbreviation||"").toUpperCase(),
+    number:String(p.jersey==null?(p.number==null?"":p.number):p.jersey),position:code||String(pos.abbreviation||"").toUpperCase(),
     rank:null,experience:p.experience&&p.experience.years,college:p.college&&p.college.name,
-    height:p.displayHeight||"",weight:p.displayWeight||"",status:p.status&&p.status.name||""
+    height:p.displayHeight||"",weight:p.displayWeight||"",
+    status:cleanStatus(es),rosterStatus:cleanStatus(p.rosterStatus||p.roster_status||es)
   };
 }
+function makeGroupMap(){return {offense:new Map(),defense:new Map(),special:new Map()};}
+function sortGroups(map){
+  return Array.from(map.values()).sort(function(a,b){
+    const ai=ORDER.indexOf(a.code),bi=ORDER.indexOf(b.code);
+    return (ai<0?99:ai)-(bi<0?99:bi)||a.code.localeCompare(b.code);
+  });
+}
+function addActive(maps,p){
+  const code=String(p.position||"").toUpperCase();
+  const cat=SPECIAL.has(code)?"special":OFFENSE.has(code)?"offense":"defense";
+  const m=maps[cat];
+  if(!m.has(code))m.set(code,{code:code||"OTHER",label:LABELS[code]||code||"OTHER",players:[]});
+  m.get(code).players.push(p);
+}
 function rosterFallback(response){
-  const data={kind:"roster",updatedAt:new Date().toISOString(),offense:[],defense:[],special:[]};
-  const maps={offense:new Map(),defense:new Map(),special:new Map()};
-  const athleteGroups=Array.isArray(response.athletes)?response.athletes:[];
-  athleteGroups.forEach(function(section){
+  const out={kind:"roster",updatedAt:new Date().toISOString(),offense:[],defense:[],special:[],
+    reserve:{practice:[],ir:[],other:[]},source:"ESPN"};
+  const maps=makeGroupMap(),members=new Map();
+  const sections=Array.isArray(response&&response.athletes)?response.athletes:[];
+  sections.forEach(function(section){
     const items=Array.isArray(section.items)?section.items:[section];
-    items.forEach(function(p){
-      if(!p||!(p.displayName||p.fullName))return;
-      const pos=p.position||{},code=String(pos.abbreviation||section.abbreviation||"").toUpperCase();
-      const category=SPECIAL.has(code)?"special":OFFENSE.has(code)?"offense":"defense";
-      if(!maps[category].has(code))maps[category].set(code,{
-        code:code||"OTHER",label:LABELS[code]||pos.name||section.position||"OTHER",players:[]
-      });
-      maps[category].get(code).players.push(normalizeRosterPlayer(p,code));
+    items.forEach(function(raw){
+      if(!raw||!(raw.displayName||raw.fullName||raw.name))return;
+      const key=String(raw.id||raw.fullName||raw.displayName).toLowerCase();
+      const pos=raw.position||{};
+      const code=String(pos.abbreviation||section.abbreviation||"").toUpperCase();
+      const p=normalizeRosterPlayer(raw,code);
+      const membership=classifyStatus(raw,section);
+      p.membership=membership;
+      const previous=members.get(key);
+      // Explicit reserve designation wins if ESPN lists a player twice.
+      if(!previous||previous.membership==="active"&&membership!=="active"){
+        members.set(key,p);
+      }
     });
   });
-  UNITS.forEach(function(category){
-    data[category]=Array.from(maps[category].values()).sort(function(a,b){
-      const ia=ORDER.indexOf(a.code),ib=ORDER.indexOf(b.code);
-      return (ia<0?99:ia)-(ib<0?99:ib);
-    });
+  members.forEach(function(p){
+    if(p.membership==="active")addActive(maps,p);
+    else out.reserve[p.membership].push(p);
   });
-  return data;
-}
-function parseLiveDepthChart(payload, roster){
-  if(!payload||!Array.isArray(payload.depthCharts))return null;
-  const units={offense:[],defense:[],special:[]};
-  const byId=new Map();
-  if(roster)UNITS.forEach(function(category){
-    (roster[category]||[]).forEach(function(group){
-      (group.players||[]).forEach(function(p){if(p.id)byId.set(String(p.id),p);});
-    });
-  });
-  payload.depthCharts.forEach(function(chart){
-    const name=String(chart.name||chart.displayName||"").toLowerCase();
-    const category=name.includes("special")?"special":name.includes("defen")?"defense":"offense";
-    const positions=chart.positions||{};
-    Object.keys(positions).forEach(function(key){
-      const pos=positions[key];if(!pos||!Array.isArray(pos.athletes))return;
-      const meta=pos.position||{};
-      const code=String(meta.abbreviation||key).toUpperCase();
-      const players=pos.athletes.map(function(entry,i){
-        const athlete=entry.athlete||entry;
-        const prior=byId.get(String(athlete.id||""))||{};
-        return Object.assign({},prior,{
-          id:String(athlete.id||prior.id||""),
-          name:athlete.displayName||athlete.fullName||prior.name||"",
-          number:String(athlete.jersey||prior.number||""),
-          position:code,rank:entry.rank||i+1
-        });
-      }).filter(function(p){return !!p.name;});
-      if(players.length)units[category].push({code,label:meta.name||LABELS[code]||key,players});
-    });
-  });
-  if(!UNITS.some(function(category){return units[category].length;}))return null;
-  return Object.assign({kind:"depth",updatedAt:new Date().toISOString(),live:true},units);
-}
-function overlayRoster(chart,roster){
-  if(!chart||chart.kind!=="depth"||!roster)return chart;
-  const byId=new Map();
-  UNITS.forEach(function(category){
-    (roster[category]||[]).forEach(function(group){
-      (group.players||[]).forEach(function(p){if(p.id)byId.set(String(p.id),p);});
-    });
-  });
-  const result=Object.assign({},chart);
-  UNITS.forEach(function(category){
-    result[category]=(chart[category]||[]).map(function(group){
-      return Object.assign({},group,{players:(group.players||[]).map(function(player){
-        const current=byId.get(String(player.id));
-        return current?Object.assign({},player,{
-          name:current.name||player.name,number:current.number||player.number,
-          college:current.college||player.college,experience:current.experience!=null?current.experience:player.experience,
-          height:current.height||player.height,weight:current.weight||player.weight,status:current.status||player.status
-        }):player;
-      })});
-    });
-  });
-  return result;
+  UNITS.forEach(function(cat){out[cat]=sortGroups(maps[cat]);});
+  return out;
 }
 
-/* Sleeper supplies depth-chart ranks for many NFL skill positions.
-   Cache its large roster locally for 24h, per Sleeper API recommendations.
-   Never invent a rank for players missing from its published data. */
-let sleeperIndex=null,sleeperRequest=null;
-function sleeperTeam(slug){
-  return ({wsh:"WAS",lar:"LAR",jax:"JAX",lv:"LV"})[slug]||slug.toUpperCase();
+
+function parseLiveDepthChart(payload){
+  if(!payload||!Array.isArray(payload.depthCharts))return null;
+  const mapById=new Map(),mapByName=new Map();
+  payload.depthCharts.forEach(function(section){
+    const positions=section.positions||{};
+    Object.keys(positions).forEach(function(key){
+      const pos=positions[key];if(!pos||!Array.isArray(pos.athletes))return;
+      const code=String((pos.position||{}).abbreviation||key).toUpperCase();
+      pos.athletes.forEach(function(entry,index){
+        const athlete=entry.athlete||entry;
+        if(!athlete)return;
+        const rank=Number(entry.rank||index+1);
+        if(!Number.isFinite(rank))return;
+        const info={rank,code};
+        if(athlete.id)mapById.set(String(athlete.id),info);
+        const name=String(athlete.displayName||athlete.fullName||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+        if(name)mapByName.set(name,info);
+      });
+    });
+  });
+  return mapById.size||mapByName.size?{byId:mapById,byName:mapByName}:null;
 }
-function normalizeName(value){
-  return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]/g,"");
+function applyLiveDepth(roster,depth){
+  if(!roster||!depth)return roster;
+  let ranked=0;
+  const result=Object.assign({},roster);
+  UNITS.forEach(function(cat){
+    result[cat]=(roster[cat]||[]).map(function(group){
+      const players=(group.players||[]).map(function(player){
+        const key=String(player.name||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+        const match=depth.byId.get(String(player.id||""))||depth.byName.get(key);
+        if(!match)return player;
+        ranked++;
+        return Object.assign({},player,{rank:match.rank});
+      });
+      players.sort(comparePlayers);
+      return Object.assign({},group,{players});
+    });
+  });
+  if(ranked){result.kind="depth";result.depthSource="ESPN";}
+  return result;
+}
+function comparePlayers(a,b){
+  if(a.rank!=null&&b.rank==null)return -1;
+  if(a.rank==null&&b.rank!=null)return 1;
+  return (a.rank==null?0:a.rank)-(b.rank==null?0:b.rank)||
+    String(a.name||"").localeCompare(String(b.name||""));
+}
+
+
+/* The browser-safe Sleeper player index supplies independently reported depth
+   order and membership. Fetched at most once per day, never per team switch. */
+let sleeperIndex=null,sleeperRequest=null,sleeperUpdatedAt=null;
+const SLEEPER_CODES={wsh:["WAS","WSH"],jax:["JAX","JAC"],lar:["LAR","LA"],
+  lv:["LV","OAK"],lac:["LAC","SD"]};
+function normName(value){
+  return String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase().replace(/[^a-z0-9]/g,"");
+}
+function sleeperMembership(raw){
+  const status=String(raw.status||"")+" "+String(raw.roster_status||"");
+  if(/practice[\s-]*squad|\bPS\b/i.test(status))return "practice";
+  if(/injured[\s-]*reserve|reserve\/injured|\bIR\b/i.test(status))return "ir";
+  if(/PUP|NFI|suspend/i.test(status))return "other";
+  // Injury report Q/OUT tags are not roster transaction status.
+  return "active";
+}
+function slimSleeper(p){
+  const rank=Number(p.depth_chart_order==null?p.depth_chart_position:p.depth_chart_order);
+  const pos=String(p.position||"").toUpperCase();
+  const name=String(p.full_name||[p.first_name,p.last_name].filter(Boolean).join(" ")).trim();
+  if(!name||!pos||pos==="DEF"||pos==="DST"||pos==="HC")return null;
+  return {
+    id:String(p.espn_id||""),name,
+    number:p.number==null?"":String(p.number),position:pos,
+    rank:Number.isInteger(rank)&&rank>0&&rank<99?rank:null,
+    experience:p.years_exp==null?null:p.years_exp,
+    college:p.college||"",height:p.height||"",weight:p.weight||"",
+    status:String(p.status||""),membership:sleeperMembership(p)
+  };
 }
 async function loadSleeper(){
   if(sleeperIndex)return sleeperIndex;
   if(sleeperRequest)return sleeperRequest;
   sleeperRequest=(async function(){
     try{
-      const cache=JSON.parse(localStorage.getItem("8bit-sleeper-day")||"null");
-      if(cache&&cache.data&&Date.now()-cache.saved<23*3600*1000){
-        sleeperIndex=cache.data;return sleeperIndex;
+      const cached=JSON.parse(localStorage.getItem("8bit-players-v3")||"null");
+      if(cached&&cached.data&&cached.saved&&Date.now()-cached.saved<24*3600*1000){
+        sleeperIndex=cached.data;
+        sleeperUpdatedAt=new Date(cached.saved).toISOString();
+        return sleeperIndex;
       }
     }catch(error){}
     try{
-      const response=await fetch("https://api.sleeper.app/v1/players/nfl?active=true",{cache:"default"});
-      if(!response.ok)throw Error("Sleeper HTTP "+response.status);
-      const all=await response.json(),compact={};
-      Object.values(all).forEach(function(player){
-        const rank=Number(player.depth_chart_order);
-        if(!player.team||!player.active||!player.position||!Number.isInteger(rank)||rank<1)return;
-        const team=String(player.team).toUpperCase();
-        if(!compact[team])compact[team]=[];
-        compact[team].push([
-          normalizeName(player.full_name||[player.first_name,player.last_name].filter(Boolean).join(" ")),
-          String(player.position).toUpperCase(),rank,
-          String(player.espn_id||""),String(player.number||"")
-        ]);
+      // Sleeper recommends this large endpoint be requested at most daily.
+      const resp=await fetch("https://api.sleeper.app/v1/players/nfl",{cache:"default"});
+      if(!resp.ok)throw Error("Sleeper "+resp.status);
+      const all=await resp.json(),teams={};
+      Object.values(all).forEach(function(raw){
+        if(!raw||!raw.team)return;
+        const p=slimSleeper(raw);
+        if(!p)return;
+        const code=String(raw.team).toUpperCase();
+        if(!teams[code])teams[code]=[];
+        teams[code].push(p);
       });
-      sleeperIndex=compact;
-      try{localStorage.setItem("8bit-sleeper-day",JSON.stringify({saved:Date.now(),data:compact}));}catch(error){}
+      if(Object.keys(teams).length<30)throw Error("incomplete Sleeper data");
+      sleeperIndex=teams;
+      sleeperUpdatedAt=new Date().toISOString();
+      try{localStorage.setItem("8bit-players-v3",JSON.stringify({
+        saved:Date.now(),data:teams
+      }));}catch(error){}
       return sleeperIndex;
-    }catch(error){return null;}
+    }catch(error){
+      sleeperRequest=null;
+      return null;
+    }
   })();
   return sleeperRequest;
 }
-function addSleeperDepth(roster,t){
-  if(!roster||!sleeperIndex||roster.kind==="depth")return roster;
-  const aliases=[sleeperTeam(t.slug)];
-  if(t.slug==="wsh")aliases.push("WSH");
-  if(t.slug==="lar")aliases.push("LA");
-  if(t.slug==="jax")aliases.push("JAC");
-  const players=aliases.flatMap(function(team){return sleeperIndex[team]||[];});
-  if(!players.length)return roster;
-  const byESPN=new Map(),byName=new Map();
-  players.forEach(function(row){
-    if(row[3])byESPN.set(row[3],row);
-    if(row[0])byName.set(row[0],row);
-  });
-  const output=Object.assign({},roster);
-  let ranked=0;
-  UNITS.forEach(function(category){
-    output[category]=(roster[category]||[]).map(function(group){
-      const members=(group.players||[]).map(function(p){
-        const matched=byESPN.get(String(p.id||""))||byName.get(normalizeName(p.name));
-        if(!matched||matched[2]==null)return p;
-        ranked++;
-        return Object.assign({},p,{rank:matched[2],number:p.number||matched[4]||""});
-      });
-      members.sort(function(a,b){return (a.rank==null?10000:a.rank)-(b.rank==null?10000:b.rank);});
-      return Object.assign({},group,{players:members});
+function sleeperPlayers(t){
+  if(!sleeperIndex)return [];
+  const codes=SLEEPER_CODES[t.slug]||[t.slug.toUpperCase()];
+  const seen=new Set(),items=[];
+  codes.forEach(function(code){
+    (sleeperIndex[code]||[]).forEach(function(p){
+      const id=p.id||normName(p.name);
+      if(seen.has(id))return;
+      seen.add(id);items.push(p);
     });
   });
-  if(ranked){
-    output.kind="partial";
-    output.depthSource="Sleeper";
-  }
-  return output;
+  return items;
+}
+function sleeperTeamRoster(t){
+  const members=sleeperPlayers(t);if(!members.length)return null;
+  const out={kind:"partial",source:"Sleeper",depthSource:"Sleeper",
+    updatedAt:sleeperUpdatedAt,offense:[],defense:[],special:[],
+    reserve:{practice:[],ir:[],other:[]}};
+  const maps=makeGroupMap();
+  members.forEach(function(p){
+    const player=Object.assign({},p);
+    if(player.membership==="active")addActive(maps,player);
+    else if(out.reserve[player.membership])out.reserve[player.membership].push(player);
+  });
+  UNITS.forEach(function(cat){
+    out[cat]=sortGroups(maps[cat]);
+    out[cat].forEach(function(group){group.players.sort(comparePlayers);});
+  });
+  return out;
+}
+function addSleeperDepth(roster,t){
+  if(!roster||!sleeperIndex||roster.kind==="depth")return roster;
+  const data=sleeperPlayers(t);if(!data.length)return roster;
+  const byId=new Map(),byName=new Map();
+  data.forEach(function(p){if(p.id)byId.set(p.id,p);byName.set(normName(p.name),p);});
+  let ranked=0;
+  const result=Object.assign({},roster);
+  // ESPN supplies current membership, Sleeper supplies published depth order.
+  UNITS.forEach(function(cat){
+    result[cat]=(roster[cat]||[]).map(function(group){
+      const players=group.players.map(function(player){
+        const match=byId.get(String(player.id||""))||byName.get(normName(player.name));
+        if(!match)return player;
+        if(match.rank!=null)ranked++;
+        return Object.assign({},player,{
+          rank:match.rank,
+          number:player.number||match.number||"",
+          college:player.college||match.college||"",
+          experience:player.experience==null?match.experience:player.experience,
+          height:player.height||match.height,weight:player.weight||match.weight
+        });
+      });
+      players.sort(comparePlayers);
+      return Object.assign({},group,{players});
+    });
+  });
+  if(ranked){result.kind="partial";result.depthSource="Sleeper";}
+  // When ESPN has no reserve entries, Sleeper can supply explicit reserve lists.
+  const reserve=Object.assign({practice:[],ir:[],other:[]},roster.reserve||{});
+  const known=new Set();
+  UNITS.forEach(function(cat){
+    (result[cat]||[]).forEach(function(g){g.players.forEach(function(p){
+      known.add(p.id||normName(p.name));
+    });});
+  });
+  RESERVE_KEYS.forEach(function(key){
+    (reserve[key]||[]).forEach(function(p){known.add(p.id||normName(p.name));});
+    if(!reserve[key].length){
+      reserve[key]=data.filter(function(p){return p.membership===key &&
+        !known.has(p.id||normName(p.name));});
+      reserve[key].forEach(function(p){known.add(p.id||normName(p.name));});
+    }
+  });
+  result.reserve=reserve;
+  return result;
 }
 
-function validTeamData(value){
-  return value && UNITS.some(function(cat){return Array.isArray(value[cat])&&value[cat].some(function(group){return group.players&&group.players.length;});});
+
+function activeCount(roster){
+  return UNITS.reduce(function(total,cat){
+    return total+(roster[cat]||[]).reduce(function(n,g){return n+(g.players||[]).length;},0);
+  },0);
 }
+function validTeamData(data){return data&&activeCount(data)>0;}
 function cachedTeam(slug){
   try{
-    const text=localStorage.getItem("8bit-roster:"+slug);
-    if(!text)return null;
-    const value=JSON.parse(text);
+    const value=JSON.parse(localStorage.getItem("8bit-roster-v4:"+slug)||"null");
     return validTeamData(value)&&Date.now()-new Date(value.updatedAt).getTime()<24*3600*1000?value:null;
   }catch(error){return null;}
 }
 function storeTeam(slug,value){
-  try{localStorage.setItem("8bit-roster:"+slug,JSON.stringify(value));}catch(error){}
+  if(!value||!value.reserve)return;
+  try{localStorage.setItem("8bit-roster-v4:"+slug,JSON.stringify(value));}catch(error){}
 }
-function useTeamData(value,id,slug){
-  if(id!==requestId||slug!==activeTeam||!validTeamData(value))return;
-  teamData=value;
-  renderPositions();
+function useTeamData(data,req,slug){
+  if(req!==requestId||slug!==activeTeam||!validTeamData(data))return;
+  teamData=data;renderPositions();
 }
-async function readSnapshot(){
-  const stamp=Date.now();
-  // Read the committed data independently from GitHub Pages deployments.
-  // GITHUB_TOKEN commits do not automatically trigger a branch Pages rebuild.
-  const urls=[
-    "https://raw.githubusercontent.com/ryanehinkle/8bit-football/main/data/depthcharts.json?rev="+stamp,
-    "./data/depthcharts.json?rev="+stamp
-  ];
-  for(const url of urls){
-    try{
-      const response=await fetch(url,{cache:"no-store"});
-      if(!response.ok)continue;
-      const json=await response.json();
-      if(json&&json.teams&&Object.keys(json.teams).length){
-        snapshot=json;
-        return;
-      }
-    }catch(error){/* Fall back to the site copy, then the live ESPN roster. */}
-  }
-  snapshot=null;
-}
-
-async function loadTeam(options){
-  options=options||{};
-  const id=++requestId,t=selected();
-  const saved=snapshot&&snapshot.teams&&snapshot.teams[t.id];
+async function loadTeam(){
+  const req=++requestId,t=selected();
   const cached=cachedTeam(t.slug);
-  let freshRoster=null, newestDepth=null;
-  const initial=validTeamData(saved)&&saved.kind==="depth"?saved:
-    validTeamData(cached)?cached:validTeamData(saved)?saved:null;
-  if(initial){
-    useTeamData(initial,id,t.slug);
-    $("dataStatus").textContent+=" · CHECKING LIVE...";
-  }else{
-    teamData=null;$("count").innerHTML="--<small>PLAYERS</small>";
+  const initial=validTeamData(cached)?cached:null;
+  let espnRoster=null,espnDepth=null,haveSleeper=!!sleeperIndex;
+  if(initial)useTeamData(initial,req,t.slug);
+  else{
+    teamData=null;
+    $("count").innerHTML="--<small>ACTIVE / 53</small>";
     $("dataStatus").textContent="LOADING LIVE ROSTER...";
-    $("positions").innerHTML='<div class="message"><span class="football">◆</span>LOADING ROSTER...</div>';
+    $("positions").innerHTML='<div class="message"><span class="football">◆</span>LOADING LINEUP...</div>';
+    $("reserveArea").innerHTML="";
   }
-  // ESPN allows browser CORS for its roster, but usually blocks direct depth-chart reads.
-  // Start both immediately; use roster as soon as it responds, then upgrade if depth responds.
+  function present(){
+    if(req!==requestId)return;
+    let current=null;
+    if(espnRoster){
+      // ESPN roster determines active 53 vs reserves; depth never adds
+      // non-active players back into the active roster.
+      current=espnDepth?applyLiveDepth(espnRoster,espnDepth):
+        haveSleeper?addSleeperDepth(espnRoster,t):espnRoster;
+    }else if(haveSleeper)current=sleeperTeamRoster(t);
+    else current=initial;
+    if(!validTeamData(current))return;
+    useTeamData(current,req,t.slug);
+    if(espnRoster||haveSleeper)storeTeam(t.slug,current);
+  }
   const base="https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/"+t.id;
-  const liveDepth=fetch(base+"/depthcharts?refresh="+Date.now(),{cache:"no-store"})
-    .then(function(response){if(!response.ok)throw Error("depth HTTP "+response.status);return response.json();})
-    .then(function(payload){
-      if(id!==requestId)return;
-      const depth=parseLiveDepthChart(payload,freshRoster);
-      if(depth){
-        newestDepth=depth;
-        storeTeam(t.slug,depth);useTeamData(depth,id,t.slug);
-      }
-    }).catch(function(){/* No browser CORS for many depth-chart responses; snapshot/roster stays visible. */});
-  try{
-    const response=await fetch(base+"/roster?refresh="+Date.now(),{cache:"no-store"});
-    if(!response.ok)throw Error("roster HTTP "+response.status);
-    const payload=await response.json();
-    if(id!==requestId)return;
-    freshRoster=rosterFallback(payload);
-    if(!validTeamData(freshRoster))throw Error("Empty roster");
-    const chart=newestDepth?overlayRoster(newestDepth,freshRoster):
-      validTeamData(saved)&&saved.kind==="depth"?overlayRoster(saved,freshRoster):null;
-    const chosen=chart||addSleeperDepth(freshRoster,t);
-    chosen.live=true;chosen.lastRosterCheck=new Date().toISOString();
-    storeTeam(t.slug,chosen);useTeamData(chosen,id,t.slug);
-  }catch(error){
-    if(id!==requestId)return;
-    if(!teamData){
-      $("dataStatus").textContent="ROSTER UNAVAILABLE";
-      $("positions").innerHTML='<div class="message">COULD NOT LOAD THIS TEAM.<br>CHECK YOUR CONNECTION.<button type="button" id="retry" class="retry">RETRY ↻</button></div>';
-    }else{
-      $("dataStatus").textContent+=" · OFFLINE / CACHED";
-    }
-  }
-  await liveDepth;
-  if(id===requestId && teamData && teamData.kind!=="depth"){
-    // Enrich the already-visible ESPN roster without delaying first paint.
-    const index=await loadSleeper();
-    if(index && id===requestId && activeTeam===t.slug){
-      const enriched=addSleeperDepth(teamData,t);
-      if(enriched!==teamData){
-        storeTeam(t.slug,enriched);
-        useTeamData(enriched,id,t.slug);
-      }
-    }
+  // ESPN is the fast, browser-CORS-accessible current 53-man roster.
+  const primary=(async function(){
+    try{
+      const response=await fetch(base+"/roster",{cache:"no-store"});
+      if(!response.ok)throw Error("ESPN HTTP "+response.status);
+      const normalized=rosterFallback(await response.json());
+      if(req!==requestId)return;
+      if(!validTeamData(normalized))throw Error("ESPN roster empty");
+      espnRoster=normalized;espnRoster.live=true;
+      present();
+    }catch(error){/* Sleeper or cached roster remains available. */}
+  })();
+  // In case ESPN ranked depth charts begin allowing CORS, use them.
+  const depth=(async function(){
+    const controller=new AbortController();
+    const timer=setTimeout(function(){controller.abort();},4000);
+    try{
+      const response=await fetch(base+"/depthcharts",{cache:"no-store",signal:controller.signal});
+      if(!response.ok)throw Error("depth HTTP "+response.status);
+      const data=parseLiveDepthChart(await response.json());
+      if(req!==requestId)return;
+      if(data){espnDepth=data;present();}
+    }catch(error){}finally{clearTimeout(timer);}
+  })();
+  // Sleeper source loads independently of first paint and is cached for 24h.
+  const secondary=loadSleeper().then(function(index){
+    if(req!==requestId)return;
+    haveSleeper=!!index;
+    if(haveSleeper)present();
+  }).catch(function(){});
+  await Promise.allSettled([primary,depth,secondary]);
+  if(req!==requestId)return;
+  if(!teamData){
+    $("dataStatus").textContent="NO ROSTER AVAILABLE";
+    $("positions").innerHTML='<div class="message">COULD NOT LOAD LIVE ROSTERS.<br>CHECK YOUR CONNECTION.<button type="button" id="retry" class="retry">RETRY ↻</button></div>';
+    $("reserveArea").innerHTML="";
   }
 }
 
@@ -434,14 +522,53 @@ function extra(p,g){
   if(/^\d+$/.test(String(p.id||"")))bits.push('<a href="https://www.espn.com/nfl/player/_/id/'+escapeHTML(p.id)+'" target="_blank" rel="noopener noreferrer">PLAYER PROFILE ↗</a>');
   return bits.map(function(x){return "<div>"+x+"</div>";}).join("");
 }
+
+function renderReserves(){
+  const area=$("reserveArea");if(!area||!teamData)return;
+  const reserve=teamData.reserve||{};
+  const sections=[
+    ["practice","PRACTICE SQUAD","PS"],
+    ["ir","INJURED RESERVE","IR"],
+    ["other","OTHER RESERVE","RS"]
+  ];
+  let html='<div class="reserve-heading"><div class="eyebrow">OFF THE ACTIVE ROSTER</div><h2>RESERVE LISTS</h2></div>';
+  let shown=0;
+  sections.forEach(function(entry){
+    const key=entry[0],name=entry[1],tag=entry[2];
+    const players=Array.isArray(reserve[key])?reserve[key]:[];
+    if(key==="other"&&!players.length)return;
+    shown++;
+    const sorted=players.slice().sort(function(p,q){
+      const i=ORDER.indexOf(p.position),j=ORDER.indexOf(q.position);
+      return (i<0?99:i)-(j<0?99:j)||p.name.localeCompare(q.name);
+    });
+    html+='<details class="reserve-card"><summary><span class="reserve-badge">'+tag+'</span>'+
+      '<span class="reserve-label">'+name+'</span><span class="reserve-count">'+sorted.length+'</span>'+
+      '<span class="reserve-arrow">▼</span></summary><div class="reserve-players">';
+    if(!sorted.length)html+='<div class="reserve-empty">NO PLAYERS LISTED</div>';
+    sorted.forEach(function(p){
+      html+='<div class="reserve-player"><span class="reserve-jersey">'+jersey(p,selected())+'</span>'+
+        '<span class="reserve-player-name">'+escapeHTML(p.name)+'</span>'+
+        '<span class="reserve-position">'+escapeHTML(p.position||"--")+'</span></div>';
+    });
+    html+='</div></details>';
+  });
+  area.innerHTML=html;
+}
 function renderPositions(){
   if(!teamData)return;
   const groups=Array.isArray(teamData[unit])?teamData[unit]:[],t=selected();
-  const count=groups.reduce(function(total,g){return total+(g.players||[]).length;},0);
-  $("count").innerHTML=String(count).padStart(2,"0")+'<small>PLAYERS</small>';
-  $("dataStatus").textContent=(teamData.kind==="depth"?"ESPN DEPTH CHART":teamData.kind==="partial"?"SLEEPER DEPTH · ESPN ROSTER":"ESPN ROSTER · ORDER UNVERIFIED")+
-    (teamData.updatedAt?" · "+dateText(teamData.updatedAt):"")+(teamData.live?" · LIVE CHECKED":" · CACHED");
-  if(!count){$("positions").innerHTML='<div class="message">NO PLAYERS LISTED.<br>TRY ANOTHER CATEGORY.</div>';return;}
+  const count=activeCount(teamData),inUnit=groups.reduce(function(n,g){return n+(g.players||[]).length;},0);
+  $("count").innerHTML=String(count).padStart(2,"0")+'<small>ACTIVE / 53</small>';
+  const depthLabel=teamData.kind==="depth"?"ESPN DEPTH ORDER":
+    teamData.kind==="partial"?"SLEEPER DEPTH ORDER":"ROSTER · DEPTH UNVERIFIED";
+  const rosterLabel=teamData.source==="Sleeper"?"SLEEPER":"ESPN";
+  $("dataStatus").textContent=rosterLabel+" · "+depthLabel+
+    (teamData.updatedAt?" · "+dateText(teamData.updatedAt):"");
+  if(!inUnit){
+    $("positions").innerHTML='<div class="message">NO ACTIVE PLAYERS LISTED.<br>TRY ANOTHER CATEGORY.</div>';
+    renderReserves();return;
+  }
   let html="";
   groups.forEach(function(group,gi){
     if(!group.players||!group.players.length)return;
@@ -460,7 +587,9 @@ function renderPositions(){
     html+='</div></details>';
   });
   $("positions").innerHTML=html;
+  renderReserves();
 }
+
 $("prevTeam").addEventListener("click",function(){cycle(-1);});
 $("nextTeam").addEventListener("click",function(){cycle(1);});
 $("selectTeam").addEventListener("click",showPicker);
@@ -469,7 +598,7 @@ $("shade").addEventListener("click",hidePicker);
 $("teamSearch").addEventListener("input",function(){drawChoices(this.value);});
 $("teamGrid").addEventListener("click",function(e){const choice=e.target.closest("[data-team]");if(choice)setTeam(choice.dataset.team,true);});
 document.querySelectorAll("[data-unit]").forEach(function(b){b.addEventListener("click",function(){setUnit(b.dataset.unit,true);});});
-$("reload").addEventListener("click",async function(){await readSnapshot();loadTeam({force:true});});
+$("reload").addEventListener("click",function(){loadTeam();});
 $("positions").addEventListener("click",function(e){
   if(e.target.closest("#retry")){loadTeam();return;}
   const row=e.target.closest("[data-player]");if(!row)return;
@@ -485,9 +614,8 @@ window.addEventListener("hashchange",function(){
   const h=fromHash();let last="";
   try{last=localStorage.getItem("8bit-last-team")||"";}catch(e){}
   activeTeam=h?h.slug:BY_SLUG[last]?last:"chi";unit=h?h.unit:"offense";
-  saveURL(true);renderTeam();loadTeam();await readSnapshot();
-  if(snapshot&&snapshot.teams&&snapshot.teams[selected().id])loadTeam();
+  saveURL(true);renderTeam();loadTeam();
 })();
 setInterval(function(){if(document.visibilityState==="visible")loadTeam();},120000);
-setInterval(async function(){if(document.visibilityState!=="visible")return;await readSnapshot();if(snapshot&&snapshot.teams&&snapshot.teams[selected().id])loadTeam();},300000);
+// Main roster refresh is direct from ESPN; no GitHub runner is required.
 document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")loadTeam();});
