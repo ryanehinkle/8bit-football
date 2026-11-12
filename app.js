@@ -35,7 +35,6 @@ function selected(){return BY_SLUG[activeTeam];}
 
 function helmet(t){
   const main=escapeHTML(t.primary),trim=escapeHTML(t.secondary);
-  const short=escapeHTML(t.slug.toUpperCase());
   return '<span class="helmet-art"><svg viewBox="0 0 108 92" shape-rendering="crispEdges" aria-hidden="true">' +
     '<path d="M29 4H72V9H83V14H92V24H98V53H93V61H84V67H59V73H36V68H25V63H16V52H11V29H16V18H22V10H29Z" fill="#03070c"/>' +
     '<path d="M29 10H72V15H82V20H88V28H94V51H88V56H80V62H60V68H37V63H26V57H21V50H16V29H21V20H29Z" fill="'+main+'"/>' +
@@ -46,29 +45,7 @@ function helmet(t){
     '<path d="M65 54H82V58H65Z M79 64H84V69H79Z" fill="#a8b3bb"/>' +
     '<rect x="56" y="44" width="8" height="13" fill="#05090c"/><rect x="58" y="46" width="6" height="7" fill="'+trim+'"/>' +
     '<rect x="35" y="64" width="20" height="4" fill="#05090c"/>' +
-    '</svg><span class="helmet-mark-fallback">'+short+'</span><canvas class="helmet-logo" width="20" height="20" aria-hidden="true"></canvas></span>';
-}
-function renderHelmetLogo(t){
-  const target=$("teamHelmet"),canvas=target&&target.querySelector("canvas");
-  if(!canvas)return;
-  const image=new Image();
-  // Rasterize the genuine team mark into 20x20 pixels, then scale with nearest-neighbor.
-  // Drawing an external image is fine for display; pixel data is never read/exported.
-  image.onload=function(){
-    if(!canvas.isConnected||activeTeam!==t.slug)return;
-    try{
-      const ctx=canvas.getContext("2d");
-      ctx.clearRect(0,0,20,20);
-      ctx.imageSmoothingEnabled=false;
-      const ratio=Math.min(18/image.naturalWidth,18/image.naturalHeight);
-      const w=Math.max(1,Math.floor(image.naturalWidth*ratio));
-      const h=Math.max(1,Math.floor(image.naturalHeight*ratio));
-      ctx.drawImage(image,Math.floor((20-w)/2),Math.floor((20-h)/2),w,h);
-      canvas.classList.add("loaded");
-      const label=target.querySelector(".helmet-mark-fallback");if(label)label.hidden=true;
-    }catch(error){/* Keep the pixel fallback if the CDN fails. */}
-  };
-  image.src="https://a.espncdn.com/i/teamlogos/nfl/500/"+encodeURIComponent(t.slug)+".png";
+    '</svg></span>';
 }
 function jersey(p,t){
   const n=escapeHTML(p.number==null||p.number===""?"--":String(p.number).slice(0,2));
@@ -97,7 +74,6 @@ function renderTeam(){
   document.documentElement.style.setProperty("--team",t.primary);
   document.documentElement.style.setProperty("--trim",t.secondary);
   $("teamHelmet").innerHTML=helmet(t);
-  renderHelmetLogo(t);
   $("teamCity").textContent=t.city.toUpperCase();
   $("teamName").textContent=t.name.toUpperCase();
   $("teamDivision").textContent=t.conference+" "+t.division.toUpperCase();
