@@ -486,7 +486,8 @@ async function loadTeam(force){
   let baseline=null,oline=null,injuries=null,injuryFetchFailed=false;
   const extraData=window.EightBitData||null;
   if(extraData&&extraData.lastKnown)injuries=extraData.lastKnown(t);
-  if(initial)useTeamData(initial,req,t.slug);
+  if(initial)useTeamData(injuries&&extraData?
+    extraData.applyInjuries(initial,injuries):initial,req,t.slug);
   else{
     teamData=null;
     $("count").innerHTML="--<small>ACTIVE / 53</small>";
